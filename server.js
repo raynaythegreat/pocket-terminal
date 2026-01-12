@@ -25,48 +25,42 @@ if (!fs.existsSync(workspaceDir)) {
 }
 
 // Available CLI tools configuration
+// CLIs handle their own authentication - user signs in through each CLI
 const CLI_TOOLS = {
   claude: {
     name: 'Claude Code',
     command: 'claude',
-    description: 'Anthropic Claude AI coding assistant',
-    envKey: 'ANTHROPIC_API_KEY'
+    description: 'Sign in with your Anthropic account'
   },
   gemini: {
     name: 'Gemini CLI',
     command: 'gemini',
-    description: 'Google Gemini AI assistant',
-    envKey: 'GEMINI_API_KEY'
+    description: 'Sign in with your Google account'
   },
   codex: {
     name: 'Codex',
     command: 'codex',
-    description: 'OpenAI Codex coding assistant',
-    envKey: 'OPENAI_API_KEY'
+    description: 'Sign in with your OpenAI account'
   },
   grok: {
     name: 'Grok',
     command: 'grok',
-    description: 'xAI Grok assistant',
-    envKey: 'XAI_API_KEY'
+    description: 'Sign in with your xAI account'
   },
   kimi: {
     name: 'Kimi K2',
     command: 'kimi',
-    description: 'Moonshot Kimi K2 assistant',
-    envKey: 'KIMI_API_KEY'
+    description: 'Sign in with your Moonshot account'
   },
   opencode: {
     name: 'OpenCode',
     command: 'opencode',
-    description: 'Open source coding assistant',
-    envKey: 'OPENCODE_API_KEY'
+    description: 'Open source AI coding assistant'
   },
   bash: {
     name: 'Bash Shell',
     command: 'bash',
-    description: 'Standard bash terminal',
-    envKey: null
+    description: 'Standard terminal for any command'
   }
 };
 
@@ -104,8 +98,7 @@ app.get('/api/clis', (req, res) => {
   const clis = Object.entries(CLI_TOOLS).map(([id, cli]) => ({
     id,
     name: cli.name,
-    description: cli.description,
-    available: cli.envKey ? !!process.env[cli.envKey] : true
+    description: cli.description
   }));
   res.json(clis);
 });
@@ -183,19 +176,12 @@ wss.on('connection', (ws, req) => {
           args = [];
         }
 
-        // Build environment
+        // Build environment - CLIs handle their own authentication
         const termEnv = {
           ...process.env,
           PATH: enhancedPath,
           TERM: 'xterm-256color',
-          ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-          OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-          GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-          GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-          XAI_API_KEY: process.env.XAI_API_KEY,
-          GROK_API_KEY: process.env.GROK_API_KEY,
-          KIMI_API_KEY: process.env.KIMI_API_KEY,
-          OPENCODE_API_KEY: process.env.OPENCODE_API_KEY
+          HOME: workspaceDir  // Store CLI configs in workspace
         };
 
         try {

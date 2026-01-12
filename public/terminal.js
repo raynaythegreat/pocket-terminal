@@ -63,13 +63,10 @@
   // Render CLI grid
   function renderCLIGrid() {
     cliGrid.innerHTML = cliList.map(cli => `
-      <div class="cli-card ${cli.available ? '' : 'unavailable'}" data-cli="${cli.id}">
+      <div class="cli-card" data-cli="${cli.id}">
         <div class="cli-icon">${CLI_ICONS[cli.id] || '🔧'}</div>
         <div class="cli-name">${cli.name}</div>
         <div class="cli-desc">${cli.description}</div>
-        <span class="cli-status ${cli.available ? 'available' : 'unavailable'}">
-          ${cli.available ? 'Ready' : 'No API Key'}
-        </span>
       </div>
     `).join('');
 

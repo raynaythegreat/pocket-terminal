@@ -154,11 +154,6 @@ html, body {
   transform: scale(0.98);
 }
 
-.cli-card.unavailable {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .cli-card .cli-icon {
   font-size: 2rem;
   margin-bottom: 0.5rem;
@@ -172,28 +167,9 @@ html, body {
 }
 
 .cli-card .cli-desc {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   color: #888;
-  flex: 1;
-}
-
-.cli-card .cli-status {
-  font-size: 0.7rem;
-  margin-top: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  display: inline-block;
-  width: fit-content;
-}
-
-.cli-card .cli-status.available {
-  background: rgba(0, 217, 100, 0.2);
-  color: #00d964;
-}
-
-.cli-card .cli-status.unavailable {
-  background: rgba(255, 107, 107, 0.2);
-  color: #ff6b6b;
+  line-height: 1.4;
 }
 
 /* Terminal Screen */
