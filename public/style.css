@@ -5,6 +5,7 @@
 }
 
 :root {
+  color-scheme: dark;
   --bg: #0b1020;
   --bg-gradient:
     radial-gradient(1200px 600px at 50% -20%, rgba(79, 140, 255, 0.25) 0%, rgba(11, 16, 32, 0) 60%),
@@ -13,6 +14,7 @@
   --surface: rgba(255, 255, 255, 0.05);
   --surface-2: rgba(255, 255, 255, 0.08);
   --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
   --text: rgba(255, 255, 255, 0.92);
   --muted: rgba(255, 255, 255, 0.68);
   --muted-2: rgba(255, 255, 255, 0.48);
@@ -26,6 +28,43 @@
   --radius-md: 12px;
 
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+
+  --control: rgba(255, 255, 255, 0.06);
+  --control-hover: rgba(255, 255, 255, 0.09);
+
+  --input-bg: rgba(11, 16, 32, 0.55);
+  --input-text: #ffffff;
+
+  --badge-bg: rgba(0, 0, 0, 0.35);
+  --overlay-bg: rgba(0, 0, 0, 0.7);
+  --overlay-border: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f8fb;
+  --bg-gradient:
+    radial-gradient(1200px 600px at 50% -20%, rgba(79, 140, 255, 0.22) 0%, rgba(247, 248, 251, 0) 60%),
+    radial-gradient(900px 450px at 20% 10%, rgba(16, 185, 129, 0.14) 0%, rgba(247, 248, 251, 0) 55%),
+    linear-gradient(180deg, #fbfcff 0%, #f1f4fb 100%);
+  --surface: rgba(15, 23, 42, 0.04);
+  --surface-2: rgba(15, 23, 42, 0.07);
+  --border: rgba(15, 23, 42, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.18);
+  --text: rgba(15, 23, 42, 0.92);
+  --muted: rgba(15, 23, 42, 0.68);
+  --muted-2: rgba(15, 23, 42, 0.5);
+  --shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+
+  --control: rgba(15, 23, 42, 0.05);
+  --control-hover: rgba(15, 23, 42, 0.08);
+
+  --input-bg: rgba(255, 255, 255, 0.92);
+  --input-text: rgba(15, 23, 42, 0.92);
+
+  --badge-bg: rgba(15, 23, 42, 0.06);
+  --overlay-bg: rgba(15, 23, 42, 0.74);
+  --overlay-border: rgba(15, 23, 42, 0.14);
 }
 
 html, body {
@@ -37,13 +76,11 @@ html, body {
 }
 
 .screen {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .hidden {
@@ -55,18 +92,27 @@ html, body {
   justify-content: center;
   align-items: center;
   background: var(--bg-gradient);
+  padding: calc(1rem + env(safe-area-inset-top, 0px)) 1rem
+    calc(1rem + env(safe-area-inset-bottom, 0px));
 }
 
 .login-container {
+  position: relative;
   text-align: center;
   padding: 2rem;
   max-width: 400px;
   width: 90%;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface);
   box-shadow: var(--shadow);
   backdrop-filter: blur(10px);
+}
+
+.login-theme-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
 }
 
 .login-container h1 {
@@ -94,10 +140,14 @@ html, body {
   font-size: 1rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: rgba(11, 16, 32, 0.55);
-  color: #fff;
+  background: var(--input-bg);
+  color: var(--input-text);
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+#login-form input::placeholder {
+  color: var(--muted-2);
 }
 
 #login-form input:focus {
@@ -135,7 +185,9 @@ html, body {
 #launcher-screen {
   background: var(--bg);
   padding: 1rem;
-  padding-top: env(safe-area-inset-top, 1rem);
+  padding-top: calc(1rem + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
 }
 
 .launcher-topbar {
@@ -145,6 +197,13 @@ html, body {
   gap: 12px;
   padding: 0.75rem 0 0.5rem;
   flex-wrap: wrap;
+}
+
+.launcher-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .launcher-brand {
@@ -190,7 +249,7 @@ html, body {
 
 .topbar-btn,
 .secondary-btn {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--control);
   border: 1px solid var(--border);
   color: var(--muted);
   padding: 8px 12px;
@@ -202,15 +261,28 @@ html, body {
   white-space: nowrap;
 }
 
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  user-select: none;
+}
+
+.topbar-btn.theme-toggle {
+  width: 42px;
+  padding: 8px 0;
+}
+
 .secondary-btn {
   background: transparent;
 }
 
 .topbar-btn:hover,
 .secondary-btn:hover {
-  background: rgba(255, 255, 255, 0.09);
+  background: var(--control-hover);
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--border-strong);
 }
 
 .topbar-btn:active,
@@ -222,7 +294,7 @@ html, body {
 .project-section {
   margin: 0.75rem 0;
   padding: 1rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
@@ -262,7 +334,7 @@ html, body {
   padding: 6px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--control);
   color: var(--text);
   font-size: 0.85rem;
   font-weight: 500;
@@ -271,8 +343,8 @@ html, body {
 }
 
 .action-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--control-hover);
+  border-color: var(--border-strong);
   transform: translateY(-1px);
 }
 
@@ -298,7 +370,7 @@ html, body {
   padding: 10px 14px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--control);
   color: var(--text);
   font-size: 0.9rem;
   outline: none;
@@ -307,7 +379,7 @@ html, body {
 }
 
 .project-select:hover {
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--border-strong);
 }
 
 .project-select:focus-visible {
@@ -324,7 +396,7 @@ html, body {
 .git-status-panel {
   margin: 0.75rem 0;
   padding: 1rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
@@ -356,7 +428,7 @@ html, body {
 .git-commit-count {
   font-size: 0.8rem;
   color: var(--muted-2);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--control);
   padding: 2px 8px;
   border-radius: 12px;
 }
@@ -373,7 +445,7 @@ html, body {
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--control-hover);
   opacity: 1;
 }
 
@@ -399,14 +471,14 @@ html, body {
   gap: 8px;
   padding: 8px;
   margin-bottom: 4px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--surface);
   border-radius: 6px;
   font-size: 0.85rem;
   transition: background 0.2s;
 }
 
 .file-item:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-2);
 }
 
 .file-status-badge {
@@ -468,6 +540,10 @@ html, body {
 /* CLI Section */
 .cli-section {
   margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .cli-section-header {
@@ -486,6 +562,7 @@ html, body {
   padding: 0.5rem;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .cli-loading {
@@ -550,8 +627,8 @@ html, body {
   border-radius: 999px;
   font-size: 11px;
   color: var(--muted);
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--badge-bg);
+  border: 1px solid var(--border);
 }
 
 .cli-card .cli-icon {
@@ -575,12 +652,14 @@ html, body {
 /* Terminal Screen */
 #terminal-screen {
   background: var(--bg);
+  overflow: hidden;
 }
 
 #terminal-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -590,10 +669,21 @@ html, body {
 #current-cli {
   font-weight: 600;
   color: var(--accent);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: end;
 }
 
 .header-btn {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--control);
   border: none;
   color: var(--muted);
   padding: 6px 12px;
@@ -603,8 +693,13 @@ html, body {
   transition: all 0.2s;
 }
 
+.header-btn.theme-toggle {
+  width: 38px;
+  padding: 6px 0;
+}
+
 .header-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--control-hover);
   color: var(--text);
 }
 
@@ -619,6 +714,7 @@ html, body {
 
 #terminal-container {
   flex: 1;
+  min-height: 0;
   padding: 4px;
   overflow: hidden;
 }
@@ -647,7 +743,7 @@ html, body {
   font-family: monospace;
   border: none;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--control);
   color: var(--text);
   cursor: pointer;
   touch-action: manipulation;
@@ -668,8 +764,8 @@ html, body {
   padding: 6px 12px;
   font-size: 11px;
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--overlay-bg);
+  border: 1px solid var(--overlay-border);
   z-index: 1000;
   backdrop-filter: blur(10px);
   pointer-events: none;
@@ -698,6 +794,12 @@ html, body {
   * {
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+@media (max-width: 360px) {
+  .cli-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -731,13 +833,6 @@ html, body {
   }
 }
 
-/* When mobile toolbar is visible, position status above it */
-#terminal-screen #status {
+body[data-screen="terminal"] #status {
   bottom: calc(68px + env(safe-area-inset-bottom, 0px));
-}
-
-/* On launcher screen, keep at bottom */
-#launcher-screen ~ #status,
-#login-screen ~ #status {
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
 }

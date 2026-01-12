@@ -14,6 +14,13 @@
   <!-- Login Screen -->
   <div id="login-screen" class="screen">
     <div class="login-container">
+      <button
+        class="topbar-btn theme-toggle login-theme-toggle"
+        type="button"
+        data-theme-toggle
+        aria-label="Toggle theme"
+        title="Toggle theme"
+      ></button>
       <h1>Pocket Terminal</h1>
       <p>Enter password to access your AI CLIs</p>
       <form id="login-form">
@@ -31,7 +38,16 @@
         <div class="launcher-title">Pocket Terminal</div>
         <div class="launcher-subtitle">AI coding assistants at your fingertips</div>
       </div>
-      <button id="logout-btn" class="topbar-btn" type="button">Log out</button>
+      <div class="launcher-actions">
+        <button
+          class="topbar-btn theme-toggle"
+          type="button"
+          data-theme-toggle
+          aria-label="Toggle theme"
+          title="Toggle theme"
+        ></button>
+        <button id="logout-btn" class="topbar-btn" type="button">Log out</button>
+      </div>
     </div>
     <div class="launcher-meta">
       <p id="launcher-error" class="error hidden"></p>
@@ -86,9 +102,18 @@
   <!-- Terminal Screen -->
   <div id="terminal-screen" class="screen hidden">
     <div id="terminal-header">
-      <button id="exit-btn" class="header-btn exit-btn">Exit</button>
+      <button id="exit-btn" class="header-btn exit-btn" type="button">Exit</button>
       <span id="current-cli">Terminal</span>
-      <button id="switch-btn" class="header-btn">Switch</button>
+      <div class="terminal-actions">
+        <button
+          class="header-btn theme-toggle"
+          type="button"
+          data-theme-toggle
+          aria-label="Toggle theme"
+          title="Toggle theme"
+        ></button>
+        <button id="switch-btn" class="header-btn" type="button">Switch</button>
+      </div>
     </div>
     <div id="terminal-container"></div>
     <div id="mobile-toolbar">

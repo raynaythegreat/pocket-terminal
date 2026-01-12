@@ -26,6 +26,8 @@
   const statusEl = document.getElementById('status');
   const statusText = document.getElementById('status-text');
   const toolbar = document.getElementById('mobile-toolbar');
+  const themeToggleButtons = Array.from(document.querySelectorAll('[data-theme-toggle]'));
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
 
   // CLI Icons
   const CLI_ICONS = {
@@ -53,6 +55,111 @@
   let reconnectTimeoutId = null;
   let listenersAttached = false;
   let manuallyDisconnected = false;
+  const THEME_STORAGE_KEY = 'pocket_terminal_theme';
+  let activeTheme = null;
+
+  function normalizeTheme(value) {
+    if (value === 'light' || value === 'dark') return value;
+    return null;
+  }
+
+  function getSystemTheme() {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    return 'light';
+  }
+
+  function getXtermTheme(theme) {
+    if (theme === 'light') {
+      return {
+        background: '#fbfcff',
+        foreground: '#0f172a',
+        cursor: '#4f8cff',
+        cursorAccent: '#fbfcff',
+        selection: 'rgba(79, 140, 255, 0.18)',
+        black: '#0f172a',
+        red: '#dc2626',
+        green: '#16a34a',
+        yellow: '#b45309',
+        blue: '#2563eb',
+        magenta: '#7c3aed',
+        cyan: '#0891b2',
+        white: '#475569',
+        brightBlack: '#64748b',
+        brightRed: '#ef4444',
+        brightGreen: '#22c55e',
+        brightYellow: '#f59e0b',
+        brightBlue: '#4f8cff',
+        brightMagenta: '#a78bfa',
+        brightCyan: '#22d3ee',
+        brightWhite: '#0f172a'
+      };
+    }
+
+    return {
+      background: '#0b1020',
+      foreground: '#e6e9f2',
+      cursor: '#4f8cff',
+      cursorAccent: '#0b1020',
+      selection: 'rgba(79, 140, 255, 0.25)',
+      black: '#0b1020',
+      red: '#ef4444',
+      green: '#22c55e',
+      yellow: '#f59e0b',
+      blue: '#4f8cff',
+      magenta: '#a78bfa',
+      cyan: '#22d3ee',
+      white: '#e6e9f2',
+      brightBlack: '#444',
+      brightRed: '#f87171',
+      brightGreen: '#4ade80',
+      brightYellow: '#fbbf24',
+      brightBlue: '#7aa8ff',
+      brightMagenta: '#c4b5fd',
+      brightCyan: '#67e8f9',
+      brightWhite: '#ffffff'
+    };
+  }
+
+  function updateThemeToggleButtons(theme) {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    const icon = nextTheme === 'dark' ? '🌙' : '☀️';
+    const label = `Switch to ${nextTheme} theme`;
+
+    themeToggleButtons.forEach((button) => {
+      button.textContent = icon;
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+    });
+  }
+
+  function setThemeMetaColor(theme) {
+    if (!themeColorMeta) return;
+    themeColorMeta.setAttribute('content', theme === 'light' ? '#f7f8fb' : '#0b1020');
+  }
+
+  function applyTheme(theme, { persist = true } = {}) {
+    const normalized = normalizeTheme(theme) || 'dark';
+    activeTheme = normalized;
+    document.documentElement.dataset.theme = normalized;
+
+    if (persist) {
+      localStorage.setItem(THEME_STORAGE_KEY, normalized);
+    }
+
+    updateThemeToggleButtons(normalized);
+    setThemeMetaColor(normalized);
+
+    if (term) {
+      term.setOption('theme', getXtermTheme(normalized));
+      term.refresh(0, term.rows - 1);
+    }
+  }
+
+  function toggleTheme() {
+    applyTheme(activeTheme === 'light' ? 'dark' : 'light');
+  }
 
   function setStatus(status, text) {
     statusEl.className = status;
@@ -96,6 +203,16 @@
     launcherScreen.classList.add('hidden');
     terminalScreen.classList.add('hidden');
     screen.classList.remove('hidden');
+
+    if (screen === loginScreen) {
+      document.body.dataset.screen = 'login';
+    } else if (screen === launcherScreen) {
+      document.body.dataset.screen = 'launcher';
+    } else if (screen === terminalScreen) {
+      document.body.dataset.screen = 'terminal';
+    } else {
+      delete document.body.dataset.screen;
+    }
 
     if (screen === loginScreen) {
       passwordInput.focus();
@@ -290,29 +407,7 @@
       cursorBlink: true,
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: {
-        background: '#0b1020',
-        foreground: '#e6e9f2',
-        cursor: '#4f8cff',
-        cursorAccent: '#0b1020',
-        selection: 'rgba(79, 140, 255, 0.25)',
-        black: '#0b1020',
-        red: '#ef4444',
-        green: '#22c55e',
-        yellow: '#f59e0b',
-        blue: '#4f8cff',
-        magenta: '#a78bfa',
-        cyan: '#22d3ee',
-        white: '#e6e9f2',
-        brightBlack: '#444',
-        brightRed: '#f87171',
-        brightGreen: '#4ade80',
-        brightYellow: '#fbbf24',
-        brightBlue: '#7aa8ff',
-        brightMagenta: '#c4b5fd',
-        brightCyan: '#67e8f9',
-        brightWhite: '#ffffff'
-      },
+      theme: getXtermTheme(activeTheme),
       scrollback: 10000
     });
 
@@ -753,6 +848,14 @@
   });
 
   // Initialize
+  const storedTheme = normalizeTheme(localStorage.getItem(THEME_STORAGE_KEY));
+  applyTheme(storedTheme || getSystemTheme(), { persist: false });
+  themeToggleButtons.forEach((button) => {
+    button.addEventListener('click', toggleTheme);
+  });
+
+  document.body.dataset.screen = 'login';
+
   if (token) {
     connect();
   } else {
