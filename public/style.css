@@ -741,6 +741,7 @@ html, body {
   font-size: 12px;
   font-weight: 600;
   font-family: monospace;
+  white-space: nowrap;
   border: none;
   border-radius: 8px;
   background: var(--control);

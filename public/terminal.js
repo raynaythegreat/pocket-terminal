@@ -161,6 +161,36 @@
     applyTheme(activeTheme === 'light' ? 'dark' : 'light');
   }
 
+  async function readClipboardText() {
+    if (!navigator.clipboard?.readText) return '';
+    try {
+      return await navigator.clipboard.readText();
+    } catch (err) {
+      return '';
+    }
+  }
+
+  async function handlePasteAction() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    let text = await readClipboardText();
+    if (!text) {
+      const manual = window.prompt('Paste text to send to the terminal:');
+      if (manual === null) return;
+      text = manual;
+    }
+
+    if (!text) return;
+
+    if (term?.paste) {
+      term.paste(text);
+      term.focus();
+      return;
+    }
+
+    ws.send(JSON.stringify({ type: 'input', data: text }));
+  }
+
   function setStatus(status, text) {
     statusEl.className = status;
     statusText.textContent = text;
@@ -826,6 +856,12 @@
   toolbar.addEventListener('click', (e) => {
     const button = e.target.closest('button');
     if (!button || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const action = button.dataset.action;
+    if (action === 'paste') {
+      handlePasteAction();
+      return;
+    }
 
     const key = button.dataset.key;
     const ctrl = button.dataset.ctrl;
