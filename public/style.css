@@ -208,6 +208,15 @@ html, body {
   color: #fff;
 }
 
+.header-btn.exit-btn {
+  background: #ff6b6b;
+  color: #fff;
+}
+
+.header-btn.exit-btn:hover {
+  background: #ff5252;
+}
+
 #terminal-container {
   flex: 1;
   padding: 4px;

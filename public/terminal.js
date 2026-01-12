@@ -9,7 +9,7 @@
   const cliGrid = document.getElementById('cli-grid');
   const terminalContainer = document.getElementById('terminal-container');
   const currentCliLabel = document.getElementById('current-cli');
-  const backBtn = document.getElementById('back-btn');
+  const exitBtn = document.getElementById('exit-btn');
   const switchBtn = document.getElementById('switch-btn');
   const statusEl = document.getElementById('status');
   const statusText = document.getElementById('status-text');
@@ -21,8 +21,6 @@
     gemini: '✨',
     codex: '💻',
     grok: '🧠',
-    kimi: '🌙',
-    opencode: '📝',
     github: '🐙',
     bash: '⌨️'
   };
@@ -35,14 +33,12 @@
   let currentCli = null;
   let cliList = [];
 
-  // Update status indicator
   function setStatus(status, text) {
     statusEl.className = status;
     statusText.textContent = text;
     statusEl.classList.remove('hidden');
   }
 
-  // Show screen
   function showScreen(screen) {
     loginScreen.classList.add('hidden');
     launcherScreen.classList.add('hidden');
@@ -50,7 +46,6 @@
     screen.classList.remove('hidden');
   }
 
-  // Fetch available CLIs
   async function fetchCLIs() {
     try {
       const response = await fetch('/api/clis');
@@ -61,7 +56,6 @@
     }
   }
 
-  // Render CLI grid
   function renderCLIGrid() {
     cliGrid.innerHTML = cliList.map(cli => `
       <div class="cli-card" data-cli="${cli.id}">
@@ -71,7 +65,6 @@
       </div>
     `).join('');
 
-    // Add click handlers
     cliGrid.querySelectorAll('.cli-card').forEach(card => {
       card.addEventListener('click', () => {
         const cliId = card.dataset.cli;
@@ -83,9 +76,10 @@
     });
   }
 
-  // Initialize terminal
   function initTerminal() {
-    if (term) return;
+    if (term) {
+      term.dispose();
+    }
 
     term = new Terminal({
       cursorBlink: true,
@@ -125,34 +119,29 @@
 
     term.open(terminalContainer);
 
-    // Handle terminal input
     term.onData(data => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'input', data }));
       }
     });
 
-    // Handle resize
-    window.addEventListener('resize', () => {
-      if (fitAddon && term) {
-        fitAddon.fit();
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'resize',
-            cols: term.cols,
-            rows: term.rows
-          }));
-        }
-      }
-    });
-
-    // Focus terminal on click
-    terminalContainer.addEventListener('click', () => {
-      term.focus();
-    });
+    window.addEventListener('resize', handleResize);
+    terminalContainer.addEventListener('click', () => term.focus());
   }
 
-  // Connect WebSocket
+  function handleResize() {
+    if (fitAddon && term) {
+      fitAddon.fit();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'resize',
+          cols: term.cols,
+          rows: term.rows
+        }));
+      }
+    }
+  }
+
   function connect() {
     if (!token) {
       showScreen(loginScreen);
@@ -198,8 +187,12 @@
 
           case 'exit':
             if (term) {
-              term.writeln('\r\n[Process exited - press Back to return]');
+              term.writeln('\r\n\x1b[33m[CLI exited - tap Exit to return]\x1b[0m');
             }
+            break;
+
+          case 'killed':
+            // Terminal was killed, ready for next action
             break;
 
           case 'error':
@@ -210,6 +203,9 @@
               loginError.textContent = 'Session expired. Please log in again.';
             } else {
               console.error('Error:', message.error);
+              if (term) {
+                term.writeln('\r\n\x1b[31m[Error: ' + message.error + ']\x1b[0m');
+              }
             }
             break;
         }
@@ -227,10 +223,37 @@
     };
   }
 
-  // Launch a CLI
-  function launchCLI(cliId, cliName) {
+  function killCurrentTerminal() {
+    return new Promise((resolve) => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const handler = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'killed') {
+              ws.removeEventListener('message', handler);
+              resolve();
+            }
+          } catch (e) {}
+        };
+        ws.addEventListener('message', handler);
+        ws.send(JSON.stringify({ type: 'kill' }));
+        // Timeout fallback
+        setTimeout(() => {
+          ws.removeEventListener('message', handler);
+          resolve();
+        }, 1000);
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  async function launchCLI(cliId, cliName) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      // Clear terminal if it exists
+      // Kill existing terminal first
+      await killCurrentTerminal();
+
+      // Clear terminal display
       if (term) {
         term.clear();
       }
@@ -244,7 +267,7 @@
     }
   }
 
-  // Handle login form
+  // Login form handler
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     loginError.textContent = '';
@@ -274,16 +297,21 @@
     }
   });
 
-  // Back button - return to launcher
-  backBtn.addEventListener('click', () => {
-    showScreen(launcherScreen);
+  // Exit button - kill terminal and go back to launcher
+  exitBtn.addEventListener('click', async () => {
+    await killCurrentTerminal();
     if (term) {
       term.clear();
     }
+    showScreen(launcherScreen);
   });
 
-  // Switch button - return to launcher to pick another CLI
-  switchBtn.addEventListener('click', () => {
+  // Switch button - kill terminal and go back to launcher
+  switchBtn.addEventListener('click', async () => {
+    await killCurrentTerminal();
+    if (term) {
+      term.clear();
+    }
     showScreen(launcherScreen);
   });
 

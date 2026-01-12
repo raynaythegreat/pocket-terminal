@@ -26,7 +26,6 @@ if (!fs.existsSync(workspaceDir)) {
 }
 
 // Available CLI tools configuration
-// CLIs handle their own authentication - user signs in through each CLI
 const CLI_TOOLS = {
   claude: {
     name: 'Claude Code',
@@ -48,16 +47,6 @@ const CLI_TOOLS = {
     command: 'grok',
     description: 'Sign in with your xAI account'
   },
-  kimi: {
-    name: 'Kimi K2',
-    command: 'kimi',
-    description: 'Sign in with your Moonshot account'
-  },
-  opencode: {
-    name: 'OpenCode',
-    command: 'opencode',
-    description: 'Open source AI coding assistant'
-  },
   github: {
     name: 'GitHub CLI',
     command: 'gh',
@@ -66,7 +55,7 @@ const CLI_TOOLS = {
   bash: {
     name: 'Bash Shell',
     command: 'bash',
-    description: 'Standard terminal for any command'
+    description: 'Full terminal - run any command'
   }
 };
 
@@ -74,7 +63,6 @@ const CLI_TOOLS = {
 const sessions = new Map();
 const terminals = new Map();
 
-// Generate session token
 function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
@@ -86,13 +74,9 @@ app.use(express.json());
 // Auth endpoint
 app.post('/auth', (req, res) => {
   const { password } = req.body;
-
   if (password === PASSWORD) {
     const token = generateToken();
-    sessions.set(token, {
-      created: Date.now(),
-      lastActivity: Date.now()
-    });
+    sessions.set(token, { created: Date.now(), lastActivity: Date.now() });
     res.json({ success: true, token });
   } else {
     res.status(401).json({ success: false, error: 'Invalid password' });
@@ -109,27 +93,46 @@ app.get('/api/clis', (req, res) => {
   res.json(clis);
 });
 
-// Validate session token
 function isValidSession(token) {
   const session = sessions.get(token);
   if (!session) return false;
-
   const maxAge = 24 * 60 * 60 * 1000;
   if (Date.now() - session.created > maxAge) {
     sessions.delete(token);
     return false;
   }
-
   session.lastActivity = Date.now();
   return true;
 }
 
 // WebSocket connection handler
-wss.on('connection', (ws, req) => {
+wss.on('connection', (ws) => {
   let authenticated = false;
   let terminal = null;
   let terminalId = null;
   let currentCli = null;
+
+  // Function to kill current terminal
+  function killTerminal() {
+    if (terminal) {
+      try {
+        // Send SIGTERM first, then SIGKILL
+        terminal.kill('SIGTERM');
+        setTimeout(() => {
+          if (terminal) {
+            terminal.kill('SIGKILL');
+          }
+        }, 500);
+      } catch (e) {
+        // Terminal might already be dead
+      }
+      if (terminalId) {
+        terminals.delete(terminalId);
+      }
+      terminal = null;
+      terminalId = null;
+    }
+  }
 
   ws.on('message', (data) => {
     try {
@@ -147,9 +150,15 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      // Require authentication for all other messages
       if (!authenticated) {
         ws.send(JSON.stringify({ type: 'error', error: 'Not authenticated' }));
+        return;
+      }
+
+      // Handle kill request - important for switching CLIs
+      if (message.type === 'kill') {
+        killTerminal();
+        ws.send(JSON.stringify({ type: 'killed' }));
         return;
       }
 
@@ -163,74 +172,67 @@ wss.on('connection', (ws, req) => {
           return;
         }
 
-        // Kill existing terminal if any
-        if (terminal) {
-          terminal.kill();
-          terminals.delete(terminalId);
-        }
+        // Kill existing terminal first
+        killTerminal();
 
-        terminalId = crypto.randomBytes(8).toString('hex');
-        currentCli = cliId;
+        // Small delay to ensure clean shutdown
+        setTimeout(() => {
+          terminalId = crypto.randomBytes(8).toString('hex');
+          currentCli = cliId;
 
-        // Launch CLI through bash for better error handling
-        let shell = 'bash';
-        let args;
-        if (cliId === 'bash') {
-          args = [];  // Interactive bash
-        } else {
-          args = ['-c', cli.command];  // Run CLI command through bash
-        }
+          // Build environment
+          const homeDir = process.env.HOME || '/tmp';
+          const termEnv = {
+            ...process.env,
+            PATH: enhancedPath,
+            TERM: 'xterm-256color',
+            HOME: homeDir,
+            XDG_CONFIG_HOME: path.join(homeDir, '.config'),
+            XDG_DATA_HOME: path.join(homeDir, '.local/share'),
+            FORCE_COLOR: '1'
+          };
 
-        // Build environment - CLIs handle their own authentication
-        // Keep original HOME so CLIs can store auth tokens properly
-        const homeDir = process.env.HOME || '/tmp';
-        const termEnv = {
-          ...process.env,
-          PATH: enhancedPath,
-          TERM: 'xterm-256color',
-          HOME: homeDir,
-          XDG_CONFIG_HOME: path.join(homeDir, '.config'),
-          XDG_DATA_HOME: path.join(homeDir, '.local/share')
-        };
+          try {
+            // Spawn the CLI directly (not through bash -c)
+            terminal = pty.spawn(cli.command, [], {
+              name: 'xterm-256color',
+              cols: message.cols || 80,
+              rows: message.rows || 24,
+              cwd: workspaceDir,
+              env: termEnv
+            });
 
-        try {
-          terminal = pty.spawn(shell, args, {
-            name: 'xterm-256color',
-            cols: message.cols || 80,
-            rows: message.rows || 24,
-            cwd: workspaceDir,
-            env: termEnv
-          });
+            terminals.set(terminalId, terminal);
 
-          terminals.set(terminalId, terminal);
+            terminal.onData((output) => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'output', data: output }));
+              }
+            });
 
-          terminal.onData((data) => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'output', data }));
-            }
-          });
+            terminal.onExit(({ exitCode }) => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'exit', code: exitCode, cli: currentCli }));
+              }
+              terminals.delete(terminalId);
+              terminal = null;
+            });
 
-          terminal.onExit(({ exitCode }) => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code: exitCode, cli: currentCli }));
-            }
-            terminals.delete(terminalId);
-            terminal = null;
-          });
+            ws.send(JSON.stringify({
+              type: 'launched',
+              terminalId,
+              cli: cliId,
+              name: cli.name
+            }));
 
-          ws.send(JSON.stringify({
-            type: 'launched',
-            terminalId,
-            cli: cliId,
-            name: cli.name
-          }));
+          } catch (err) {
+            ws.send(JSON.stringify({
+              type: 'error',
+              error: `Failed to launch ${cli.name}: ${err.message}`
+            }));
+          }
+        }, 100);
 
-        } catch (err) {
-          ws.send(JSON.stringify({
-            type: 'error',
-            error: `Failed to launch ${cli.name}: ${err.message}`
-          }));
-        }
         return;
       }
 
@@ -250,12 +252,7 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    if (terminal) {
-      terminal.kill();
-      if (terminalId) {
-        terminals.delete(terminalId);
-      }
-    }
+    killTerminal();
   });
 
   ws.on('error', (err) => {
@@ -263,11 +260,10 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// Clean up expired sessions periodically
+// Clean up expired sessions
 setInterval(() => {
   const maxAge = 24 * 60 * 60 * 1000;
   const now = Date.now();
-
   for (const [token, session] of sessions) {
     if (now - session.created > maxAge) {
       sessions.delete(token);
@@ -279,5 +275,4 @@ server.listen(PORT, () => {
   console.log(`Pocket Terminal running on port ${PORT}`);
   console.log(`Open http://localhost:${PORT} in your browser`);
   console.log(`\nAvailable CLIs: ${Object.keys(CLI_TOOLS).join(', ')}`);
-  console.log(`Workspace: ${workspaceDir}`);
 });
