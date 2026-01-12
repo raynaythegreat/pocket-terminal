@@ -24,6 +24,52 @@ if (!fs.existsSync(workspaceDir)) {
   fs.mkdirSync(workspaceDir, { recursive: true });
 }
 
+// Available CLI tools configuration
+const CLI_TOOLS = {
+  claude: {
+    name: 'Claude Code',
+    command: 'claude',
+    description: 'Anthropic Claude AI coding assistant',
+    envKey: 'ANTHROPIC_API_KEY'
+  },
+  gemini: {
+    name: 'Gemini CLI',
+    command: 'gemini',
+    description: 'Google Gemini AI assistant',
+    envKey: 'GEMINI_API_KEY'
+  },
+  codex: {
+    name: 'Codex',
+    command: 'codex',
+    description: 'OpenAI Codex coding assistant',
+    envKey: 'OPENAI_API_KEY'
+  },
+  grok: {
+    name: 'Grok',
+    command: 'grok',
+    description: 'xAI Grok assistant',
+    envKey: 'XAI_API_KEY'
+  },
+  kimi: {
+    name: 'Kimi K2',
+    command: 'kimi',
+    description: 'Moonshot Kimi K2 assistant',
+    envKey: 'KIMI_API_KEY'
+  },
+  opencode: {
+    name: 'OpenCode',
+    command: 'opencode',
+    description: 'Open source coding assistant',
+    envKey: 'OPENCODE_API_KEY'
+  },
+  bash: {
+    name: 'Bash Shell',
+    command: 'bash',
+    description: 'Standard bash terminal',
+    envKey: null
+  }
+};
+
 // Store active sessions and terminals
 const sessions = new Map();
 const terminals = new Map();
@@ -53,12 +99,22 @@ app.post('/auth', (req, res) => {
   }
 });
 
+// Get available CLIs endpoint
+app.get('/api/clis', (req, res) => {
+  const clis = Object.entries(CLI_TOOLS).map(([id, cli]) => ({
+    id,
+    name: cli.name,
+    description: cli.description,
+    available: cli.envKey ? !!process.env[cli.envKey] : true
+  }));
+  res.json(clis);
+});
+
 // Validate session token
 function isValidSession(token) {
   const session = sessions.get(token);
   if (!session) return false;
 
-  // Session expires after 24 hours
   const maxAge = 24 * 60 * 60 * 1000;
   if (Date.now() - session.created > maxAge) {
     sessions.delete(token);
@@ -74,6 +130,7 @@ wss.on('connection', (ws, req) => {
   let authenticated = false;
   let terminal = null;
   let terminalId = null;
+  let currentCli = null;
 
   ws.on('message', (data) => {
     try {
@@ -83,46 +140,7 @@ wss.on('connection', (ws, req) => {
       if (message.type === 'auth') {
         if (isValidSession(message.token)) {
           authenticated = true;
-          terminalId = crypto.randomBytes(8).toString('hex');
-
-          // Spawn terminal with AI CLI tools in PATH
-          const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
-          terminal = pty.spawn(shell, [], {
-            name: 'xterm-256color',
-            cols: message.cols || 80,
-            rows: message.rows || 24,
-            cwd: workspaceDir,
-            env: {
-              ...process.env,
-              PATH: enhancedPath,
-              TERM: 'xterm-256color',
-              // Pass through API keys for AI CLIs
-              ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
-              OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-              GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-              GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-              XAI_API_KEY: process.env.XAI_API_KEY,
-              GROK_API_KEY: process.env.GROK_API_KEY
-            }
-          });
-
-          terminals.set(terminalId, terminal);
-
-          // Send terminal output to client
-          terminal.onData((data) => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'output', data }));
-            }
-          });
-
-          terminal.onExit(({ exitCode }) => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'exit', code: exitCode }));
-            }
-            terminals.delete(terminalId);
-          });
-
-          ws.send(JSON.stringify({ type: 'authenticated', terminalId }));
+          ws.send(JSON.stringify({ type: 'authenticated' }));
         } else {
           ws.send(JSON.stringify({ type: 'error', error: 'Invalid or expired session' }));
           ws.close();
@@ -133,6 +151,91 @@ wss.on('connection', (ws, req) => {
       // Require authentication for all other messages
       if (!authenticated) {
         ws.send(JSON.stringify({ type: 'error', error: 'Not authenticated' }));
+        return;
+      }
+
+      // Handle launching a CLI
+      if (message.type === 'launch') {
+        const cliId = message.cli || 'bash';
+        const cli = CLI_TOOLS[cliId];
+
+        if (!cli) {
+          ws.send(JSON.stringify({ type: 'error', error: 'Unknown CLI tool' }));
+          return;
+        }
+
+        // Kill existing terminal if any
+        if (terminal) {
+          terminal.kill();
+          terminals.delete(terminalId);
+        }
+
+        terminalId = crypto.randomBytes(8).toString('hex');
+        currentCli = cliId;
+
+        // Determine shell and args
+        let shell, args;
+        if (cliId === 'bash') {
+          shell = 'bash';
+          args = [];
+        } else {
+          shell = cli.command;
+          args = [];
+        }
+
+        // Build environment
+        const termEnv = {
+          ...process.env,
+          PATH: enhancedPath,
+          TERM: 'xterm-256color',
+          ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+          OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+          GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+          GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+          XAI_API_KEY: process.env.XAI_API_KEY,
+          GROK_API_KEY: process.env.GROK_API_KEY,
+          KIMI_API_KEY: process.env.KIMI_API_KEY,
+          OPENCODE_API_KEY: process.env.OPENCODE_API_KEY
+        };
+
+        try {
+          terminal = pty.spawn(shell, args, {
+            name: 'xterm-256color',
+            cols: message.cols || 80,
+            rows: message.rows || 24,
+            cwd: workspaceDir,
+            env: termEnv
+          });
+
+          terminals.set(terminalId, terminal);
+
+          terminal.onData((data) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'output', data }));
+            }
+          });
+
+          terminal.onExit(({ exitCode }) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'exit', code: exitCode, cli: currentCli }));
+            }
+            terminals.delete(terminalId);
+            terminal = null;
+          });
+
+          ws.send(JSON.stringify({
+            type: 'launched',
+            terminalId,
+            cli: cliId,
+            name: cli.name
+          }));
+
+        } catch (err) {
+          ws.send(JSON.stringify({
+            type: 'error',
+            error: `Failed to launch ${cli.name}: ${err.message}`
+          }));
+        }
         return;
       }
 
@@ -175,11 +278,11 @@ setInterval(() => {
       sessions.delete(token);
     }
   }
-}, 60 * 60 * 1000); // Check every hour
+}, 60 * 60 * 1000);
 
 server.listen(PORT, () => {
   console.log(`Pocket Terminal running on port ${PORT}`);
   console.log(`Open http://localhost:${PORT} in your browser`);
-  console.log(`\nAvailable AI CLIs: claude, gemini, codex`);
-  console.log(`Workspace directory: ${workspaceDir}`);
+  console.log(`\nAvailable CLIs: ${Object.keys(CLI_TOOLS).join(', ')}`);
+  console.log(`Workspace: ${workspaceDir}`);
 });

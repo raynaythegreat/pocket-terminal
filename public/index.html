@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#1a1a2e">
+  <meta name="theme-color" content="#0f0f1a">
   <title>Pocket Terminal</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
   <link rel="stylesheet" href="style.css">
@@ -15,7 +15,7 @@
   <div id="login-screen" class="screen">
     <div class="login-container">
       <h1>Pocket Terminal</h1>
-      <p>Enter password to access terminal</p>
+      <p>Enter password to access your AI CLIs</p>
       <form id="login-form">
         <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
         <button type="submit">Connect</button>
@@ -24,8 +24,24 @@
     </div>
   </div>
 
+  <!-- CLI Launcher Screen -->
+  <div id="launcher-screen" class="screen hidden">
+    <div class="launcher-header">
+      <h2>Select AI CLI</h2>
+      <p>Choose a tool to launch</p>
+    </div>
+    <div id="cli-grid" class="cli-grid">
+      <!-- CLIs will be populated here -->
+    </div>
+  </div>
+
   <!-- Terminal Screen -->
   <div id="terminal-screen" class="screen hidden">
+    <div id="terminal-header">
+      <button id="back-btn" class="header-btn">< Back</button>
+      <span id="current-cli">Terminal</span>
+      <button id="switch-btn" class="header-btn">Switch</button>
+    </div>
     <div id="terminal-container"></div>
     <div id="mobile-toolbar">
       <button data-key="Escape">ESC</button>

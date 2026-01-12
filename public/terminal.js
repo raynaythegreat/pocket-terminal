@@ -1,23 +1,38 @@
 (function() {
   // DOM Elements
   const loginScreen = document.getElementById('login-screen');
+  const launcherScreen = document.getElementById('launcher-screen');
   const terminalScreen = document.getElementById('terminal-screen');
   const loginForm = document.getElementById('login-form');
   const passwordInput = document.getElementById('password');
   const loginError = document.getElementById('login-error');
+  const cliGrid = document.getElementById('cli-grid');
   const terminalContainer = document.getElementById('terminal-container');
+  const currentCliLabel = document.getElementById('current-cli');
+  const backBtn = document.getElementById('back-btn');
+  const switchBtn = document.getElementById('switch-btn');
   const statusEl = document.getElementById('status');
   const statusText = document.getElementById('status-text');
   const toolbar = document.getElementById('mobile-toolbar');
+
+  // CLI Icons
+  const CLI_ICONS = {
+    claude: '🤖',
+    gemini: '✨',
+    codex: '💻',
+    grok: '🧠',
+    kimi: '🌙',
+    opencode: '📝',
+    bash: '⌨️'
+  };
 
   // State
   let token = localStorage.getItem('terminal_token');
   let ws = null;
   let term = null;
   let fitAddon = null;
-  let reconnectTimeout = null;
-  let reconnectAttempts = 0;
-  const maxReconnectAttempts = 5;
+  let currentCli = null;
+  let cliList = [];
 
   // Update status indicator
   function setStatus(status, text) {
@@ -26,8 +41,54 @@
     statusEl.classList.remove('hidden');
   }
 
+  // Show screen
+  function showScreen(screen) {
+    loginScreen.classList.add('hidden');
+    launcherScreen.classList.add('hidden');
+    terminalScreen.classList.add('hidden');
+    screen.classList.remove('hidden');
+  }
+
+  // Fetch available CLIs
+  async function fetchCLIs() {
+    try {
+      const response = await fetch('/api/clis');
+      cliList = await response.json();
+      renderCLIGrid();
+    } catch (err) {
+      console.error('Failed to fetch CLIs:', err);
+    }
+  }
+
+  // Render CLI grid
+  function renderCLIGrid() {
+    cliGrid.innerHTML = cliList.map(cli => `
+      <div class="cli-card ${cli.available ? '' : 'unavailable'}" data-cli="${cli.id}">
+        <div class="cli-icon">${CLI_ICONS[cli.id] || '🔧'}</div>
+        <div class="cli-name">${cli.name}</div>
+        <div class="cli-desc">${cli.description}</div>
+        <span class="cli-status ${cli.available ? 'available' : 'unavailable'}">
+          ${cli.available ? 'Ready' : 'No API Key'}
+        </span>
+      </div>
+    `).join('');
+
+    // Add click handlers
+    cliGrid.querySelectorAll('.cli-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const cliId = card.dataset.cli;
+        const cli = cliList.find(c => c.id === cliId);
+        if (cli) {
+          launchCLI(cliId, cli.name);
+        }
+      });
+    });
+  }
+
   // Initialize terminal
   function initTerminal() {
+    if (term) return;
+
     term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
@@ -55,8 +116,7 @@
         brightCyan: '#a5f3fc',
         brightWhite: '#ffffff'
       },
-      allowTransparency: true,
-      scrollback: 5000
+      scrollback: 10000
     });
 
     fitAddon = new FitAddon.FitAddon();
@@ -66,7 +126,6 @@
     term.loadAddon(webLinksAddon);
 
     term.open(terminalContainer);
-    fitAddon.fit();
 
     // Handle terminal input
     term.onData(data => {
@@ -77,7 +136,7 @@
 
     // Handle resize
     window.addEventListener('resize', () => {
-      if (fitAddon) {
+      if (fitAddon && term) {
         fitAddon.fit();
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
@@ -95,10 +154,10 @@
     });
   }
 
-  // Connect to WebSocket
+  // Connect WebSocket
   function connect() {
     if (!token) {
-      showLogin();
+      showScreen(loginScreen);
       return;
     }
 
@@ -108,15 +167,7 @@
     ws = new WebSocket(`${protocol}//${window.location.host}`);
 
     ws.onopen = () => {
-      reconnectAttempts = 0;
-
-      // Send auth with terminal dimensions
-      ws.send(JSON.stringify({
-        type: 'auth',
-        token: token,
-        cols: term ? term.cols : 80,
-        rows: term ? term.rows : 24
-      }));
+      ws.send(JSON.stringify({ type: 'auth', token }));
     };
 
     ws.onmessage = (event) => {
@@ -126,11 +177,19 @@
         switch (message.type) {
           case 'authenticated':
             setStatus('connected', 'Connected');
-            showTerminal();
-            if (term) {
+            fetchCLIs();
+            showScreen(launcherScreen);
+            break;
+
+          case 'launched':
+            currentCli = message.cli;
+            currentCliLabel.textContent = message.name;
+            showScreen(terminalScreen);
+            initTerminal();
+            setTimeout(() => {
+              fitAddon.fit();
               term.focus();
-              term.clear();
-            }
+            }, 100);
             break;
 
           case 'output':
@@ -140,15 +199,19 @@
             break;
 
           case 'exit':
-            term.writeln('\r\n[Process exited]');
+            if (term) {
+              term.writeln('\r\n[Process exited - press Back to return]');
+            }
             break;
 
           case 'error':
             if (message.error.includes('Invalid') || message.error.includes('expired')) {
               localStorage.removeItem('terminal_token');
               token = null;
-              showLogin();
+              showScreen(loginScreen);
               loginError.textContent = 'Session expired. Please log in again.';
+            } else {
+              console.error('Error:', message.error);
             }
             break;
         }
@@ -159,13 +222,6 @@
 
     ws.onclose = () => {
       setStatus('disconnected', 'Disconnected');
-
-      if (token && reconnectAttempts < maxReconnectAttempts) {
-        reconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-        setStatus('connecting', `Reconnecting in ${delay / 1000}s...`);
-        reconnectTimeout = setTimeout(connect, delay);
-      }
     };
 
     ws.onerror = (err) => {
@@ -173,25 +229,24 @@
     };
   }
 
-  // Show login screen
-  function showLogin() {
-    loginScreen.classList.remove('hidden');
-    terminalScreen.classList.add('hidden');
-    statusEl.classList.add('hidden');
-    passwordInput.focus();
-  }
+  // Launch a CLI
+  function launchCLI(cliId, cliName) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      // Clear terminal if it exists
+      if (term) {
+        term.clear();
+      }
 
-  // Show terminal screen
-  function showTerminal() {
-    loginScreen.classList.add('hidden');
-    terminalScreen.classList.remove('hidden');
-
-    if (!term) {
-      initTerminal();
+      ws.send(JSON.stringify({
+        type: 'launch',
+        cli: cliId,
+        cols: term ? term.cols : 80,
+        rows: term ? term.rows : 24
+      }));
     }
   }
 
-  // Handle login form submission
+  // Handle login form
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     loginError.textContent = '';
@@ -221,17 +276,29 @@
     }
   });
 
-  // Handle mobile toolbar buttons
+  // Back button - return to launcher
+  backBtn.addEventListener('click', () => {
+    showScreen(launcherScreen);
+    if (term) {
+      term.clear();
+    }
+  });
+
+  // Switch button - return to launcher to pick another CLI
+  switchBtn.addEventListener('click', () => {
+    showScreen(launcherScreen);
+  });
+
+  // Mobile toolbar buttons
   toolbar.addEventListener('click', (e) => {
     const button = e.target.closest('button');
-    if (!button) return;
+    if (!button || !ws || ws.readyState !== WebSocket.OPEN) return;
 
     const key = button.dataset.key;
     const ctrl = button.dataset.ctrl;
 
     if (term) {
       if (key === 'Escape') {
-        term.focus();
         ws.send(JSON.stringify({ type: 'input', data: '\x1b' }));
       } else if (key === 'Tab') {
         ws.send(JSON.stringify({ type: 'input', data: '\t' }));
@@ -247,20 +314,10 @@
     }
   });
 
-  // Prevent zoom on double-tap
-  document.addEventListener('touchend', (e) => {
-    const now = Date.now();
-    if (now - (document.lastTouchEnd || 0) < 300) {
-      e.preventDefault();
-    }
-    document.lastTouchEnd = now;
-  }, { passive: false });
-
   // Initialize
   if (token) {
-    showTerminal();
     connect();
   } else {
-    showLogin();
+    showScreen(loginScreen);
   }
 })();
