@@ -73,6 +73,7 @@
   let listenersAttached = false;
   let manuallyDisconnected = false;
   const THEME_STORAGE_KEY = 'pocket_terminal_theme';
+  const PROJECTS_CACHE_KEY = 'pocket_terminal_projects_cache';
   let activeTheme = null;
   let pendingTerminalInput = null;
 
@@ -81,6 +82,31 @@
   let activeFilePath = '';
   let activeFileContent = '';
   let isFileEditing = false;
+
+  function loadCachedProjects() {
+    try {
+      const raw = localStorage.getItem(PROJECTS_CACHE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      const list = Array.isArray(parsed?.projects) ? parsed.projects : null;
+      if (!list) return null;
+      return list.filter((p) => typeof p?.name === 'string');
+    } catch {
+      return null;
+    }
+  }
+
+  function saveCachedProjects(list) {
+    try {
+      const projects = Array.isArray(list) ? list : [];
+      localStorage.setItem(
+        PROJECTS_CACHE_KEY,
+        JSON.stringify({ savedAt: Date.now(), projects }),
+      );
+    } catch {
+      // ignore
+    }
+  }
 
   function normalizeTheme(value) {
     if (value === 'light' || value === 'dark') return value;
@@ -606,13 +632,22 @@
       }
       const data = await response.json();
       projects = Array.isArray(data.projects) ? data.projects : [];
+      saveCachedProjects(projects);
       renderProjectPicker();
       fetchGitStatus();
       fetchFiles();
     } catch (err) {
       console.error('Failed to fetch projects:', err);
-      projects = [];
-      projectSelect.innerHTML = '<option value="">Projects (root)</option>';
+      const cached = loadCachedProjects();
+      if (cached?.length) {
+        projects = cached;
+        renderProjectPicker();
+        setLauncherError('Could not refresh projects (showing cached list).');
+      } else {
+        projects = [];
+        projectSelect.innerHTML = '<option value="">Projects (root)</option>';
+        setLauncherError('Could not load projects.');
+      }
     }
   }
 

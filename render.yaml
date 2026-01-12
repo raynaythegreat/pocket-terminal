@@ -5,6 +5,10 @@ services:
     healthCheckPath: /healthz
     buildCommand: chmod +x build.sh && ./build.sh
     startCommand: npm start
+    disk:
+      name: pocket-terminal-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: TERMINAL_PASSWORD
         sync: false  # Set in Render dashboard
@@ -13,8 +17,10 @@ services:
       - key: GITHUB_TOKEN
         sync: false  # Alternative GitHub token variable
       - key: RENDER_API_KEY
-        value: rnd_XuAqfS8MYuIe8yuLuEJrE8t8fTQ5
+        sync: false  # Set in Render dashboard (do not commit secrets)
       - key: NODE_ENV
         value: production
       - key: WORKSPACE_DIR
-        value: /tmp/pocket-terminal-workspace
+        value: /var/data/pocket-terminal-workspace
+      - key: CLI_HOME_DIR
+        value: /var/data/pocket-terminal-home

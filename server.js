@@ -33,6 +33,13 @@ if (!fs.existsSync(workspaceDir)) {
   fs.mkdirSync(workspaceDir, { recursive: true });
 }
 
+// Dedicated HOME for CLIs (persists history/config when WORKSPACE_DIR is persistent)
+const cliHomeDir =
+  process.env.CLI_HOME_DIR || path.join(workspaceDir, "cli-home");
+if (!fs.existsSync(cliHomeDir)) {
+  fs.mkdirSync(cliHomeDir, { recursive: true });
+}
+
 // Default projects directory (keeps multiple repos organized)
 const projectsDir = path.join(workspaceDir, "projects");
 if (!fs.existsSync(projectsDir)) {
@@ -272,7 +279,7 @@ function isValidGitHubRepoSlug(value) {
 }
 
 function getToolsEnv() {
-  const homeDir = process.env.HOME || "/tmp";
+  const homeDir = cliHomeDir || process.env.HOME || "/tmp";
   return {
     ...process.env,
     PATH: enhancedPath,
@@ -1048,7 +1055,7 @@ wss.on("connection", (ws) => {
         const terminalId = crypto.randomBytes(8).toString("hex");
 
         // Build environment
-        const homeDir = process.env.HOME || "/tmp";
+        const homeDir = cliHomeDir || process.env.HOME || "/tmp";
         const termEnv = {
           ...process.env,
           PATH: enhancedPath,
