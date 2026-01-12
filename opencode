@@ -1,0 +1,18 @@
+#!/usr/bin/env node
+
+const childProcess = require("child_process")
+const path = require("path")
+
+const scriptName = process.platform === "darwin" ? "opencode-darwin" : "opencode"
+const scriptPath = path.resolve(__dirname, "bin", scriptName)
+const result = childProcess.spawnSync(scriptPath, process.argv.slice(2), {
+  stdio: "inherit",
+})
+
+if (result.error) {
+  console.error(result.error.message)
+  process.exit(1)
+}
+
+const code = typeof result.status === "number" ? result.status : 0
+process.exit(code)

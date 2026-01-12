@@ -1,0 +1,22 @@
+#!/usr/bin/env node
+
+const childProcess = require("child_process")
+const path = require("path")
+
+const scriptPath = path.resolve(__dirname, "kimi-cli-deps", "bin", "kimi")
+const result = childProcess.spawnSync(scriptPath, process.argv.slice(2), {
+  stdio: "inherit",
+  env: {
+    ...process.env,
+    VIRTUAL_ENV: path.resolve(__dirname, "kimi-cli-deps"),
+    PATH: `${path.resolve(__dirname, "kimi-cli-deps", "bin")}:${process.env.PATH || ""}`,
+  },
+})
+
+if (result.error) {
+  console.error(result.error.message)
+  process.exit(1)
+}
+
+const code = typeof result.status === "number" ? result.status : 0
+process.exit(code)
