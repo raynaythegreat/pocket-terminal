@@ -166,22 +166,25 @@ wss.on('connection', (ws, req) => {
         terminalId = crypto.randomBytes(8).toString('hex');
         currentCli = cliId;
 
-        // Determine shell and args
-        let shell, args;
+        // Launch CLI through bash for better error handling
+        let shell = 'bash';
+        let args;
         if (cliId === 'bash') {
-          shell = 'bash';
-          args = [];
+          args = [];  // Interactive bash
         } else {
-          shell = cli.command;
-          args = [];
+          args = ['-c', cli.command];  // Run CLI command through bash
         }
 
         // Build environment - CLIs handle their own authentication
+        // Keep original HOME so CLIs can store auth tokens properly
+        const homeDir = process.env.HOME || '/tmp';
         const termEnv = {
           ...process.env,
           PATH: enhancedPath,
           TERM: 'xterm-256color',
-          HOME: workspaceDir  // Store CLI configs in workspace
+          HOME: homeDir,
+          XDG_CONFIG_HOME: path.join(homeDir, '.config'),
+          XDG_DATA_HOME: path.join(homeDir, '.local/share')
         };
 
         try {
