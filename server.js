@@ -46,6 +46,11 @@ const CLI_TOOLS = {
     command: OPENCODE_BINARY,
     description: "AI coding assistant from Anomaly",
   },
+  kilo: {
+    name: "Kilo Code",
+    commands: [process.env.KILO_COMMAND, "kilo", "kilocode", "kilo-code"],
+    description: "AI coding assistant (Kilo Code)",
+  },
   kimi: {
     name: "Kimi CLI",
     command: "kimi",
@@ -93,6 +98,9 @@ const CLI_TOOLS = {
 const sessions = new Map();
 const terminals = new Map();
 
+const MAX_PROJECT_FILE_BYTES = 512 * 1024; // 512KB
+const MAX_PROJECT_DIR_ENTRIES = 2000;
+
 function generateToken() {
   return crypto.randomBytes(32).toString("hex");
 }
@@ -133,9 +141,29 @@ function resolveCommand(command, pathEnv) {
   return null;
 }
 
+function resolveCommandAny(commands, pathEnv) {
+  const list = Array.isArray(commands) ? commands : [];
+  for (const command of list) {
+    const resolved = resolveCommand(command, pathEnv);
+    if (resolved) return resolved;
+  }
+  return null;
+}
+
+function resolveCliCommand(cli, pathEnv) {
+  if (!cli) return null;
+  if (typeof cli.command === "string") {
+    return resolveCommand(cli.command, pathEnv);
+  }
+  if (Array.isArray(cli.commands)) {
+    return resolveCommandAny(cli.commands, pathEnv);
+  }
+  return null;
+}
+
 // Serve static files
 app.use(express.static(path.join(__dirname, "public")));
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 // Health check (useful for Render)
 app.get("/healthz", (_req, res) => {
@@ -204,6 +232,32 @@ function getProjectPath(projectName) {
   } catch {
     return null;
   }
+}
+
+function resolveProjectRelativePath(projectPath, inputPath) {
+  const raw = typeof inputPath === "string" ? inputPath.trim() : "";
+  if (!raw || raw === ".") {
+    return { absolutePath: projectPath, relativePath: "" };
+  }
+
+  if (raw.includes("\0")) return null;
+
+  const normalizedInput = raw.replaceAll("\\", "/");
+  const segments = normalizedInput
+    .split("/")
+    .filter(Boolean)
+    .filter((segment) => segment !== ".");
+
+  if (segments.some((segment) => segment === "..")) return null;
+
+  const relativePath = segments.join("/");
+  const absolutePath = path.resolve(projectPath, relativePath);
+  const root = path.resolve(projectPath);
+  if (absolutePath !== root && !absolutePath.startsWith(root + path.sep)) {
+    return null;
+  }
+
+  return { absolutePath, relativePath };
 }
 
 function isValidGitHubRepoSlug(value) {
@@ -343,7 +397,7 @@ app.get("/api/clis", requireSession, (req, res) => {
     id,
     name: cli.name,
     description: cli.description,
-    available: Boolean(resolveCommand(cli.command, enhancedPath)),
+    available: Boolean(resolveCliCommand(cli, enhancedPath)),
   }));
   res.json(clis);
 });
@@ -407,6 +461,199 @@ app.post("/api/projects", requireSession, (req, res) => {
   }
 
   res.status(201).json({ success: true, project: { name } });
+});
+
+// List project files (directory contents)
+app.get("/api/projects/:name/files", requireSession, (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const resolved = resolveProjectRelativePath(projectPath, req.query?.path);
+  if (!resolved) {
+    res.status(400).json({ success: false, error: "Invalid path" });
+    return;
+  }
+
+  let stat;
+  try {
+    stat = fs.statSync(resolved.absolutePath);
+  } catch {
+    res.status(404).json({ success: false, error: "Path not found" });
+    return;
+  }
+
+  if (!stat.isDirectory()) {
+    res.status(400).json({ success: false, error: "Path is not a directory" });
+    return;
+  }
+
+  try {
+    const entries = fs.readdirSync(resolved.absolutePath, { withFileTypes: true });
+    if (entries.length > MAX_PROJECT_DIR_ENTRIES) {
+      res.status(413).json({
+        success: false,
+        error: "Directory too large to list",
+      });
+      return;
+    }
+
+    const items = entries
+      .filter((entry) => !entry.isSymbolicLink())
+      .map((entry) => {
+        const entryPath = resolved.relativePath
+          ? `${resolved.relativePath}/${entry.name}`
+          : entry.name;
+
+        let size = null;
+        let modifiedAt = null;
+
+        if (entry.isFile()) {
+          try {
+            const fileStat = fs.statSync(path.join(resolved.absolutePath, entry.name));
+            size = fileStat.size;
+            modifiedAt = fileStat.mtimeMs;
+          } catch {
+            // ignore
+          }
+        }
+
+        return {
+          name: entry.name,
+          path: entryPath,
+          type: entry.isDirectory()
+            ? "dir"
+            : entry.isFile()
+              ? "file"
+              : "other",
+          size,
+          modifiedAt,
+          hidden: entry.name.startsWith("."),
+        };
+      })
+      .sort((a, b) => {
+        if (a.type !== b.type) {
+          if (a.type === "dir") return -1;
+          if (b.type === "dir") return 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+    res.json({
+      success: true,
+      path: resolved.relativePath,
+      entries: items,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to list files",
+    });
+  }
+});
+
+// Read a text file from a project
+app.get("/api/projects/:name/file", requireSession, (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const resolved = resolveProjectRelativePath(projectPath, req.query?.path);
+  if (!resolved || !resolved.relativePath) {
+    res.status(400).json({ success: false, error: "Invalid path" });
+    return;
+  }
+
+  let stat;
+  try {
+    stat = fs.statSync(resolved.absolutePath);
+  } catch {
+    res.status(404).json({ success: false, error: "File not found" });
+    return;
+  }
+
+  if (!stat.isFile()) {
+    res.status(400).json({ success: false, error: "Path is not a file" });
+    return;
+  }
+
+  if (stat.size > MAX_PROJECT_FILE_BYTES) {
+    res.status(413).json({ success: false, error: "File too large to open" });
+    return;
+  }
+
+  try {
+    const buffer = fs.readFileSync(resolved.absolutePath);
+    if (buffer.includes(0)) {
+      res.status(415).json({ success: false, error: "Binary files are not supported" });
+      return;
+    }
+
+    res.json({
+      success: true,
+      path: resolved.relativePath,
+      content: buffer.toString("utf8"),
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to read file",
+    });
+  }
+});
+
+// Write a text file to a project (create or overwrite)
+app.put("/api/projects/:name/file", requireSession, (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const filePath = typeof req.body?.path === "string" ? req.body.path : "";
+  const content = typeof req.body?.content === "string" ? req.body.content : null;
+  if (content === null) {
+    res.status(400).json({ success: false, error: "Missing content" });
+    return;
+  }
+
+  const resolved = resolveProjectRelativePath(projectPath, filePath);
+  if (!resolved || !resolved.relativePath) {
+    res.status(400).json({ success: false, error: "Invalid path" });
+    return;
+  }
+
+  const bytes = Buffer.byteLength(content, "utf8");
+  if (bytes > MAX_PROJECT_FILE_BYTES) {
+    res.status(413).json({ success: false, error: "File too large to save" });
+    return;
+  }
+
+  const parentDir = path.dirname(resolved.absolutePath);
+  try {
+    const parentStat = fs.statSync(parentDir);
+    if (!parentStat.isDirectory()) {
+      res.status(400).json({ success: false, error: "Invalid parent directory" });
+      return;
+    }
+  } catch {
+    res.status(400).json({ success: false, error: "Parent directory does not exist" });
+    return;
+  }
+
+  try {
+    fs.writeFileSync(resolved.absolutePath, content, "utf8");
+    res.json({ success: true, path: resolved.relativePath });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to write file",
+    });
+  }
 });
 
 // Publish a project to a new GitHub repo
@@ -787,7 +1034,7 @@ wss.on("connection", (ws) => {
         // Kill existing terminal first
         killActiveTerminal();
 
-        const resolvedCommand = resolveCommand(cli.command, enhancedPath);
+        const resolvedCommand = resolveCliCommand(cli, enhancedPath);
         if (!resolvedCommand) {
           ws.send(
             JSON.stringify({

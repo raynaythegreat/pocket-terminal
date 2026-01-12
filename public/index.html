@@ -53,48 +53,77 @@
       <p id="launcher-error" class="error hidden"></p>
       <button id="retry-btn" class="secondary-btn hidden" type="button">Retry</button>
     </div>
-    <div class="project-section">
-      <div class="project-header">
-        <div class="project-header-left">
-          <span class="project-icon">📁</span>
-          <span class="project-header-title">Projects</span>
-        </div>
-        <div class="project-actions">
-          <button id="new-project-btn" class="action-btn" type="button" title="Create new project">
-            <span class="btn-icon">+</span>
-            <span class="btn-text">New</span>
-          </button>
-          <button id="publish-github-btn" class="action-btn github-btn" type="button" title="Publish to GitHub">
-            <span class="btn-icon">🚀</span>
-            <span class="btn-text">Publish</span>
-          </button>
-        </div>
-      </div>
-      <div class="project-selector">
-        <select id="project-select" class="project-select"></select>
-      </div>
-    </div>
     <p id="launcher-message" class="message hidden"></p>
 
-    <!-- Git Status Panel -->
-    <div id="git-status-panel" class="git-status-panel hidden">
-      <div class="git-status-header">
-        <div class="git-status-title">
-          <span class="git-icon">📝</span>
-          <span id="git-branch-name">main</span>
-          <span class="git-commit-count" id="git-commit-count"></span>
+    <div class="launcher-body">
+      <div class="launcher-sidebar">
+        <div class="project-section">
+          <div class="project-header">
+            <div class="project-header-left">
+              <span class="project-icon">📁</span>
+              <span class="project-header-title">Projects</span>
+            </div>
+            <div class="project-actions">
+              <button id="new-project-btn" class="action-btn" type="button" title="Create new project">
+                <span class="btn-icon">+</span>
+                <span class="btn-text">New</span>
+              </button>
+              <button id="publish-github-btn" class="action-btn github-btn" type="button" title="Publish to GitHub">
+                <span class="btn-icon">🚀</span>
+                <span class="btn-text">Publish</span>
+              </button>
+            </div>
+          </div>
+          <div class="project-selector">
+            <select id="project-select" class="project-select"></select>
+          </div>
         </div>
-        <button id="refresh-git-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
-      </div>
-      <div id="git-status-content" class="git-status-content">
-        <div class="git-status-empty">No changes</div>
-      </div>
-    </div>
 
-    <div class="cli-section">
-      <div class="cli-section-header">Available CLI Tools</div>
-      <div id="cli-grid" class="cli-grid">
-        <!-- CLIs will be populated here -->
+        <div class="files-panel">
+          <div class="files-header">
+            <div class="files-title">
+              <span class="files-icon">🗂️</span>
+              <span class="files-title-text">Files</span>
+              <span id="files-count" class="files-count"></span>
+            </div>
+            <button id="refresh-files-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
+          </div>
+          <div class="files-nav">
+            <button id="files-up-btn" class="icon-btn" type="button" title="Up">⬆️</button>
+            <div id="files-path" class="files-path">/</div>
+          </div>
+          <div class="files-search-row">
+            <input id="files-filter" class="files-filter" type="text" placeholder="Filter files…" autocomplete="off">
+          </div>
+          <p id="files-error" class="files-error hidden"></p>
+          <div id="files-list" class="files-list">
+            <div class="files-empty">Select a project to view files.</div>
+          </div>
+        </div>
+
+        <!-- Git Status Panel -->
+        <div id="git-status-panel" class="git-status-panel hidden">
+          <div class="git-status-header">
+            <div class="git-status-title">
+              <span class="git-icon">📝</span>
+              <span id="git-branch-name">main</span>
+              <span class="git-commit-count" id="git-commit-count"></span>
+            </div>
+            <button id="refresh-git-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
+          </div>
+          <div id="git-status-content" class="git-status-content">
+            <div class="git-status-empty">No changes</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="launcher-main">
+        <div class="cli-section">
+          <div class="cli-section-header">Available CLI Tools</div>
+          <div id="cli-grid" class="cli-grid">
+            <!-- CLIs will be populated here -->
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -131,6 +160,24 @@
   <!-- Status indicator -->
   <div id="status" class="hidden">
     <span id="status-text">Disconnected</span>
+  </div>
+
+  <!-- File Viewer -->
+  <div id="file-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="File viewer">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div id="file-modal-title" class="modal-title"></div>
+        <button id="file-modal-close" class="icon-btn" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-toolbar">
+        <button id="file-copy-path-btn" class="secondary-btn" type="button">Copy path</button>
+        <button id="file-open-terminal-btn" class="secondary-btn" type="button">Open in terminal</button>
+        <button id="file-edit-btn" class="secondary-btn" type="button">Edit</button>
+        <button id="file-save-btn" class="secondary-btn hidden" type="button">Save</button>
+      </div>
+      <pre id="file-modal-content" class="file-modal-content"></pre>
+      <textarea id="file-modal-editor" class="file-modal-editor hidden" spellcheck="false"></textarea>
+    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>

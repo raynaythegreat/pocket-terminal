@@ -28,10 +28,27 @@
   const toolbar = document.getElementById('mobile-toolbar');
   const themeToggleButtons = Array.from(document.querySelectorAll('[data-theme-toggle]'));
   const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  const filesList = document.getElementById('files-list');
+  const filesFilter = document.getElementById('files-filter');
+  const filesPathLabel = document.getElementById('files-path');
+  const filesUpBtn = document.getElementById('files-up-btn');
+  const refreshFilesBtn = document.getElementById('refresh-files-btn');
+  const filesCount = document.getElementById('files-count');
+  const filesError = document.getElementById('files-error');
+  const fileModal = document.getElementById('file-modal');
+  const fileModalTitle = document.getElementById('file-modal-title');
+  const fileModalClose = document.getElementById('file-modal-close');
+  const fileModalContent = document.getElementById('file-modal-content');
+  const fileModalEditor = document.getElementById('file-modal-editor');
+  const fileCopyPathBtn = document.getElementById('file-copy-path-btn');
+  const fileOpenTerminalBtn = document.getElementById('file-open-terminal-btn');
+  const fileEditBtn = document.getElementById('file-edit-btn');
+  const fileSaveBtn = document.getElementById('file-save-btn');
 
   // CLI Icons
   const CLI_ICONS = {
     opencode: '🛠️',
+    kilo: '🧰',
     kimi: '🌙',
     claude: '🤖',
     gemini: '✨',
@@ -57,6 +74,13 @@
   let manuallyDisconnected = false;
   const THEME_STORAGE_KEY = 'pocket_terminal_theme';
   let activeTheme = null;
+  let pendingTerminalInput = null;
+
+  let currentFilesDir = '';
+  let currentFiles = [];
+  let activeFilePath = '';
+  let activeFileContent = '';
+  let isFileEditing = false;
 
   function normalizeTheme(value) {
     if (value === 'light' || value === 'dark') return value;
@@ -159,6 +183,274 @@
 
   function toggleTheme() {
     applyTheme(activeTheme === 'light' ? 'dark' : 'light');
+  }
+
+  function formatBytes(value) {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes)) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB', 'MB', 'GB'];
+    let size = bytes / 1024;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    const rounded = size >= 10 ? Math.round(size) : Math.round(size * 10) / 10;
+    return `${rounded} ${units[unitIndex]}`;
+  }
+
+  function setFilesError(message) {
+    if (!filesError) return;
+    if (!message) {
+      filesError.textContent = '';
+      filesError.classList.add('hidden');
+      return;
+    }
+    filesError.textContent = message;
+    filesError.classList.remove('hidden');
+  }
+
+  function updateFilesHeader() {
+    if (filesPathLabel) {
+      filesPathLabel.textContent = currentFilesDir ? `/${currentFilesDir}` : '/';
+    }
+
+    if (filesUpBtn) {
+      filesUpBtn.disabled = !selectedProject || !currentFilesDir;
+    }
+
+    if (refreshFilesBtn) {
+      refreshFilesBtn.disabled = !selectedProject;
+    }
+
+    if (filesCount) {
+      const count = Array.isArray(currentFiles) ? currentFiles.length : 0;
+      filesCount.textContent = selectedProject ? `${count}` : '';
+    }
+  }
+
+  function renderFilesList() {
+    if (!filesList) return;
+
+    updateFilesHeader();
+
+    if (!selectedProject) {
+      currentFiles = [];
+      currentFilesDir = '';
+      setFilesError(null);
+      filesList.innerHTML = '<div class="files-empty">Select a project to view files.</div>';
+      return;
+    }
+
+    const query = String(filesFilter?.value || '').trim().toLowerCase();
+    const list = Array.isArray(currentFiles) ? currentFiles : [];
+    const filtered = query
+      ? list.filter((entry) => String(entry.name || '').toLowerCase().includes(query))
+      : list;
+
+    if (!filtered.length) {
+      filesList.innerHTML = '<div class="files-empty">No matching files.</div>';
+      return;
+    }
+
+    filesList.innerHTML = filtered
+      .map((entry) => {
+        const type = entry.type || 'other';
+        const icon = type === 'dir' ? '📁' : type === 'file' ? '📄' : '❓';
+        const meta = type === 'file' && entry.size != null ? formatBytes(entry.size) : '';
+        return `
+          <button class="file-row" type="button" data-file-path="${escapeHtml(entry.path)}" data-file-type="${escapeHtml(type)}">
+            <span class="file-icon">${icon}</span>
+            <span class="file-name" title="${escapeHtml(entry.path)}">${escapeHtml(entry.name)}</span>
+            <span class="file-meta">${escapeHtml(meta)}</span>
+          </button>
+        `;
+      })
+      .join('');
+  }
+
+  async function fetchFiles(dirPath = '') {
+    if (!filesList) return;
+
+    setFilesError(null);
+
+    if (!selectedProject) {
+      currentFilesDir = '';
+      currentFiles = [];
+      renderFilesList();
+      return;
+    }
+
+    filesList.innerHTML = '<div class="files-empty">Loading…</div>';
+
+    try {
+      const response = await apiFetch(
+        `/api/projects/${encodeURIComponent(selectedProject)}/files?path=${encodeURIComponent(dirPath)}`,
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      currentFilesDir = typeof data.path === 'string' ? data.path : '';
+      currentFiles = Array.isArray(data.entries) ? data.entries : [];
+      renderFilesList();
+    } catch (err) {
+      console.error('Failed to fetch files:', err);
+      currentFilesDir = '';
+      currentFiles = [];
+      renderFilesList();
+      setFilesError(err.message || 'Failed to load files');
+    }
+  }
+
+  function openFileModal() {
+    if (!fileModal) return;
+    fileModal.classList.remove('hidden');
+  }
+
+  function closeFileModal() {
+    if (!fileModal) return;
+    fileModal.classList.add('hidden');
+    activeFilePath = '';
+    activeFileContent = '';
+    isFileEditing = false;
+    if (fileModalEditor) fileModalEditor.classList.add('hidden');
+    if (fileModalContent) fileModalContent.classList.remove('hidden');
+    if (fileSaveBtn) fileSaveBtn.classList.add('hidden');
+    if (fileEditBtn) fileEditBtn.classList.remove('hidden');
+  }
+
+  function setFileEditing(editing) {
+    isFileEditing = Boolean(editing);
+    if (fileModalEditor) fileModalEditor.classList.toggle('hidden', !isFileEditing);
+    if (fileModalContent) fileModalContent.classList.toggle('hidden', isFileEditing);
+    if (fileSaveBtn) fileSaveBtn.classList.toggle('hidden', !isFileEditing);
+    if (fileEditBtn) fileEditBtn.classList.toggle('hidden', isFileEditing);
+  }
+
+  async function copyToClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // ignore
+      }
+    }
+
+    const manual = window.prompt('Copy to clipboard:', text);
+    return manual !== null;
+  }
+
+  function shellEscapePosix(value) {
+    return `'${String(value).replaceAll("'", "'\\''")}'`;
+  }
+
+  function buildEditorCommand(filePath) {
+    const escaped = shellEscapePosix(filePath);
+    return [
+      `if command -v nano >/dev/null 2>&1; then nano ${escaped};`,
+      `elif command -v vim >/dev/null 2>&1; then vim ${escaped};`,
+      `elif command -v vi >/dev/null 2>&1; then vi ${escaped};`,
+      'else echo "No editor found (nano/vim/vi)."; fi',
+      '',
+    ].join('\n');
+  }
+
+  function sendTerminalInput(data) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+    ws.send(JSON.stringify({ type: 'input', data }));
+    return true;
+  }
+
+  async function openFileInTerminal(filePath) {
+    if (!filePath || !selectedProject) return;
+
+    const command = buildEditorCommand(filePath);
+    const onTerminalScreen = document.body.dataset.screen === 'terminal';
+
+    if (onTerminalScreen && currentCli === 'bash') {
+      sendTerminalInput(command);
+      return;
+    }
+
+    if (onTerminalScreen && currentCli && currentCli !== 'bash') {
+      const ok = window.confirm(
+        'This will stop the current CLI session and open Bash to edit the file. Continue?',
+      );
+      if (!ok) return;
+    }
+
+    pendingTerminalInput = command;
+    launchCLI('bash', 'Bash Shell');
+  }
+
+  async function openProjectFile(filePath) {
+    if (!fileModalTitle || !fileModalContent || !fileModalEditor) return;
+    if (!selectedProject) {
+      setFilesError('Select a project first.');
+      return;
+    }
+
+    activeFilePath = filePath;
+    activeFileContent = '';
+    setFileEditing(false);
+
+    fileModalTitle.textContent = filePath;
+    fileModalContent.textContent = 'Loading…';
+    fileModalEditor.value = '';
+    openFileModal();
+
+    try {
+      const response = await apiFetch(
+        `/api/projects/${encodeURIComponent(selectedProject)}/file?path=${encodeURIComponent(filePath)}`,
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      activeFileContent = typeof data.content === 'string' ? data.content : '';
+      fileModalContent.textContent = activeFileContent;
+      fileModalEditor.value = activeFileContent;
+    } catch (err) {
+      console.error('Failed to open file:', err);
+      fileModalContent.textContent = err.message || 'Failed to open file';
+      setFileEditing(false);
+    }
+  }
+
+  async function saveActiveFile() {
+    if (!selectedProject || !activeFilePath || !fileModalEditor) return;
+
+    const content = fileModalEditor.value;
+    try {
+      const response = await apiFetch(
+        `/api/projects/${encodeURIComponent(selectedProject)}/file`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: activeFilePath, content }),
+        },
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+
+      activeFileContent = content;
+      if (fileModalContent) fileModalContent.textContent = content;
+      setFileEditing(false);
+      setLauncherMessage(`Saved: ${activeFilePath}`);
+      fetchGitStatus();
+      fetchFiles(currentFilesDir);
+    } catch (err) {
+      console.error('Failed to save file:', err);
+      setLauncherMessage(null);
+      setFilesError(err.message || 'Failed to save file');
+    }
   }
 
   async function readClipboardText() {
@@ -315,6 +607,8 @@
       const data = await response.json();
       projects = Array.isArray(data.projects) ? data.projects : [];
       renderProjectPicker();
+      fetchGitStatus();
+      fetchFiles();
     } catch (err) {
       console.error('Failed to fetch projects:', err);
       projects = [];
@@ -550,6 +844,10 @@
             setTimeout(() => {
               fitAddon.fit();
               term.focus();
+              if (pendingTerminalInput) {
+                sendTerminalInput(pendingTerminalInput);
+                pendingTerminalInput = null;
+              }
             }, 100);
             break;
 
@@ -691,6 +989,7 @@
     fetchProjects();
     fetchCLIs();
     fetchGitStatus();
+    fetchFiles(currentFilesDir);
   });
 
   // Switch button - kill terminal and go back to launcher
@@ -703,6 +1002,7 @@
     fetchProjects();
     fetchCLIs();
     fetchGitStatus();
+    fetchFiles(currentFilesDir);
   });
 
   if (cliGrid) {
@@ -722,6 +1022,7 @@
       setLauncherMessage(null);
       fetchProjects();
       fetchCLIs();
+      fetchFiles(currentFilesDir);
     });
   }
 
@@ -734,12 +1035,94 @@
         localStorage.removeItem('terminal_project');
       }
       fetchGitStatus();
+      fetchFiles();
+      closeFileModal();
+      if (filesFilter) filesFilter.value = '';
     });
   }
 
   if (refreshGitBtn) {
     refreshGitBtn.addEventListener('click', () => {
       fetchGitStatus();
+    });
+  }
+
+  if (filesFilter) {
+    filesFilter.addEventListener('input', () => {
+      renderFilesList();
+    });
+  }
+
+  if (filesUpBtn) {
+    filesUpBtn.addEventListener('click', () => {
+      if (!selectedProject || !currentFilesDir) return;
+      const parts = currentFilesDir.split('/').filter(Boolean);
+      parts.pop();
+      fetchFiles(parts.join('/'));
+    });
+  }
+
+  if (refreshFilesBtn) {
+    refreshFilesBtn.addEventListener('click', () => {
+      fetchFiles(currentFilesDir);
+    });
+  }
+
+  if (filesList) {
+    filesList.addEventListener('click', (e) => {
+      const row = e.target.closest('.file-row');
+      if (!row) return;
+      const filePath = row.dataset.filePath || '';
+      const type = row.dataset.fileType || '';
+      if (!filePath) return;
+
+      if (type === 'dir') {
+        fetchFiles(filePath);
+        return;
+      }
+
+      if (type === 'file') {
+        openProjectFile(filePath);
+      }
+    });
+  }
+
+  if (fileModalClose) {
+    fileModalClose.addEventListener('click', () => closeFileModal());
+  }
+
+  if (fileModal) {
+    fileModal.addEventListener('click', (e) => {
+      if (e.target === fileModal) closeFileModal();
+    });
+  }
+
+  if (fileCopyPathBtn) {
+    fileCopyPathBtn.addEventListener('click', () => {
+      if (!activeFilePath) return;
+      copyToClipboard(activeFilePath);
+    });
+  }
+
+  if (fileOpenTerminalBtn) {
+    fileOpenTerminalBtn.addEventListener('click', () => {
+      if (!activeFilePath) return;
+      closeFileModal();
+      openFileInTerminal(activeFilePath);
+    });
+  }
+
+  if (fileEditBtn) {
+    fileEditBtn.addEventListener('click', () => {
+      if (!activeFilePath) return;
+      setFileEditing(true);
+      fileModalEditor?.focus();
+    });
+  }
+
+  if (fileSaveBtn) {
+    fileSaveBtn.addEventListener('click', () => {
+      saveActiveFile();
     });
   }
 
@@ -768,6 +1151,7 @@
 
         fetchProjects();
         fetchGitStatus();
+        fetchFiles();
       } catch (err) {
         console.error('Project create error:', err);
         setLauncherError(err.message || 'Failed to create project');
@@ -845,6 +1229,10 @@
       token = null;
       currentCli = null;
       projects = [];
+      currentFilesDir = '';
+      currentFiles = [];
+      setFilesError(null);
+      closeFileModal();
       setLauncherError(null);
       setLauncherMessage(null);
       setRetryVisible(false);
