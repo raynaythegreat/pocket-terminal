@@ -34,14 +34,25 @@ else
 fi
 
 echo "Installing GitHub Copilot CLI (optional)..."
-if command -v npm >/dev/null 2>&1; then
-  if npm install --omit=dev --no-save --no-package-lock @github/copilot; then
-    echo "GitHub Copilot CLI installed (node_modules/.bin/copilot)"
+if command -v npm >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
+  NODE_MAJOR="$(node -p "process.versions.node.split('.')[0]")"
+
+  if [ "${NODE_MAJOR}" -ge 22 ]; then
+    if npm install --omit=dev --no-save --no-package-lock @github/copilot; then
+      echo "GitHub Copilot CLI installed (node_modules/.bin/copilot)"
+    else
+      echo "GitHub Copilot CLI install failed; skipping"
+    fi
   else
-    echo "GitHub Copilot CLI install failed; skipping"
+    echo "Node ${NODE_MAJOR} detected; installing legacy Copilot CLI (@githubnext/github-copilot-cli)"
+    if npm install --omit=dev --no-save --no-package-lock @githubnext/github-copilot-cli; then
+      echo "Legacy Copilot CLI installed (node_modules/.bin/github-copilot-cli)"
+    else
+      echo "Legacy Copilot CLI install failed; skipping"
+    fi
   fi
 else
-  echo "npm not available; skipping GitHub Copilot CLI install"
+  echo "npm/node not available; skipping GitHub Copilot CLI install"
 fi
 
 echo "Installing Kilo Code CLI (optional)..."

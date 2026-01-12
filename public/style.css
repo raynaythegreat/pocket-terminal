@@ -239,6 +239,7 @@ html, body {
   gap: 12px;
   min-height: 2.25rem;
   padding: 0.5rem 0 0.25rem;
+  flex-wrap: wrap;
 }
 
 .launcher-meta .error {
@@ -627,6 +628,8 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 0.75rem;
 }
 
@@ -634,6 +637,8 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .project-icon {
@@ -649,6 +654,8 @@ html, body {
 .project-actions {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .action-btn {
@@ -1168,6 +1175,33 @@ html, body {
 
   .files-list {
     max-height: 320px;
+  }
+}
+
+@media (max-width: 420px) {
+  .launcher-topbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .launcher-actions {
+    justify-content: flex-end;
+  }
+
+  .launcher-subtitle {
+    display: none;
+  }
+
+  .action-btn {
+    padding: 6px 10px;
+  }
+
+  .action-btn .btn-text {
+    display: none;
+  }
+
+  .action-btn .btn-icon {
+    font-size: 1.1rem;
   }
 }
 

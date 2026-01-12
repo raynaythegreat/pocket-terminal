@@ -87,7 +87,7 @@ const CLI_TOOLS = {
   },
   copilot: {
     name: "GitHub Copilot",
-    command: "copilot",
+    commands: ["copilot", "github-copilot-cli"],
     description: "GitHub Copilot CLI (interactive)",
   },
   github: {
