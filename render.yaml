@@ -2,10 +2,10 @@ services:
   - type: web
     name: pocket-terminal
     runtime: node
-    buildCommand: npm install
+    buildCommand: chmod +x build.sh && ./build.sh
     startCommand: npm start
     envVars:
       - key: TERMINAL_PASSWORD
-        sync: false  # You'll set this manually in Render dashboard
+        sync: false  # Set in Render dashboard
       - key: NODE_ENV
         value: production

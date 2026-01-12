@@ -23,6 +23,7 @@
     grok: '🧠',
     kimi: '🌙',
     opencode: '📝',
+    github: '🐙',
     bash: '⌨️'
   };
 

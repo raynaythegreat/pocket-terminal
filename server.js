@@ -14,9 +14,10 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 const PASSWORD = process.env.TERMINAL_PASSWORD || 'changeme';
 
-// Add node_modules/.bin to PATH for CLI tools
-const binPath = path.join(__dirname, 'node_modules', '.bin');
-const enhancedPath = `${binPath}:${process.env.PATH}`;
+// Add node_modules/.bin and local bin to PATH for CLI tools
+const nodeModulesBin = path.join(__dirname, 'node_modules', '.bin');
+const localBin = path.join(__dirname, 'bin');
+const enhancedPath = `${localBin}:${nodeModulesBin}:${process.env.PATH}`;
 
 // Create workspace directory for projects
 const workspaceDir = process.env.WORKSPACE_DIR || path.join(__dirname, 'workspace');
@@ -56,6 +57,11 @@ const CLI_TOOLS = {
     name: 'OpenCode',
     command: 'opencode',
     description: 'Open source AI coding assistant'
+  },
+  github: {
+    name: 'GitHub CLI',
+    command: 'gh',
+    description: 'Manage repos, PRs, issues & more'
   },
   bash: {
     name: 'Bash Shell',
