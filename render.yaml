@@ -9,7 +9,11 @@ services:
       - key: TERMINAL_PASSWORD
         sync: false  # Set in Render dashboard
       - key: GH_TOKEN
-        sync: false  # Optional: needed for GitHub publish feature
+        sync: false  # GitHub token for publish feature (gh auth required)
+      - key: GITHUB_TOKEN
+        sync: false  # Alternative GitHub token variable
+      - key: RENDER_API_KEY
+        value: rnd_XuAqfS8MYuIe8yuLuEJrE8t8fTQ5
       - key: NODE_ENV
         value: production
       - key: WORKSPACE_DIR

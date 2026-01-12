@@ -29,7 +29,7 @@
     <div class="launcher-topbar">
       <div class="launcher-brand">
         <div class="launcher-title">Pocket Terminal</div>
-        <div class="launcher-subtitle">Select a CLI to launch</div>
+        <div class="launcher-subtitle">AI coding assistants at your fingertips</div>
       </div>
       <button id="logout-btn" class="topbar-btn" type="button">Log out</button>
     </div>
@@ -37,15 +37,33 @@
       <p id="launcher-error" class="error hidden"></p>
       <button id="retry-btn" class="secondary-btn hidden" type="button">Retry</button>
     </div>
-    <div class="project-bar">
-      <label class="project-label" for="project-select">Project</label>
-      <select id="project-select" class="project-select"></select>
-      <button id="new-project-btn" class="secondary-btn" type="button">New</button>
-      <button id="publish-github-btn" class="secondary-btn" type="button">Publish</button>
+    <div class="project-section">
+      <div class="project-header">
+        <div class="project-header-left">
+          <span class="project-icon">📁</span>
+          <span class="project-header-title">Projects</span>
+        </div>
+        <div class="project-actions">
+          <button id="new-project-btn" class="action-btn" type="button" title="Create new project">
+            <span class="btn-icon">+</span>
+            <span class="btn-text">New</span>
+          </button>
+          <button id="publish-github-btn" class="action-btn github-btn" type="button" title="Publish to GitHub">
+            <span class="btn-icon">🚀</span>
+            <span class="btn-text">Publish</span>
+          </button>
+        </div>
+      </div>
+      <div class="project-selector">
+        <select id="project-select" class="project-select"></select>
+      </div>
     </div>
     <p id="launcher-message" class="message hidden"></p>
-    <div id="cli-grid" class="cli-grid">
-      <!-- CLIs will be populated here -->
+    <div class="cli-section">
+      <div class="cli-section-header">Available CLI Tools</div>
+      <div id="cli-grid" class="cli-grid">
+        <!-- CLIs will be populated here -->
+      </div>
     </div>
   </div>
 

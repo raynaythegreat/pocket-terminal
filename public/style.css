@@ -212,37 +212,120 @@ html, body {
   transform: scale(0.98);
 }
 
-.project-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0.25rem 0 0.5rem;
+/* Project Section */
+.project-section {
+  margin: 0.75rem 0;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 
-.project-label {
-  color: var(--muted-2);
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.project-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-icon {
+  font-size: 1.25rem;
+}
+
+.project-header-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.project-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
   font-size: 0.85rem;
-  white-space: nowrap;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.action-btn:active {
+  transform: scale(0.97);
+}
+
+.action-btn .btn-icon {
+  font-size: 1rem;
+}
+
+.github-btn:hover {
+  background: rgba(79, 140, 255, 0.15);
+  border-color: rgba(79, 140, 255, 0.4);
+}
+
+.project-selector {
+  width: 100%;
 }
 
 .project-select {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 12px;
-  border-radius: 999px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.06);
   color: var(--text);
+  font-size: 0.9rem;
   outline: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.project-select:hover {
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .project-select:focus-visible {
-  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.22);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.15);
 }
 
 .project-select option {
   background: var(--bg);
   color: var(--text);
+}
+
+/* CLI Section */
+.cli-section {
+  margin-top: 0.5rem;
+}
+
+.cli-section-header {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--muted);
+  padding: 0.5rem 0.5rem 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .cli-grid {
