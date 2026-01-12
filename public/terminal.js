@@ -8,10 +8,12 @@
   const loginError = document.getElementById('login-error');
   const cliGrid = document.getElementById('cli-grid');
   const launcherError = document.getElementById('launcher-error');
+  const launcherMessage = document.getElementById('launcher-message');
   const retryBtn = document.getElementById('retry-btn');
   const logoutBtn = document.getElementById('logout-btn');
   const projectSelect = document.getElementById('project-select');
   const newProjectBtn = document.getElementById('new-project-btn');
+  const publishGithubBtn = document.getElementById('publish-github-btn');
   const terminalContainer = document.getElementById('terminal-container');
   const currentCliLabel = document.getElementById('current-cli');
   const exitBtn = document.getElementById('exit-btn');
@@ -63,6 +65,19 @@
 
     launcherError.textContent = message;
     launcherError.classList.remove('hidden');
+  }
+
+  function setLauncherMessage(message) {
+    if (!launcherMessage) return;
+
+    if (!message) {
+      launcherMessage.textContent = '';
+      launcherMessage.classList.add('hidden');
+      return;
+    }
+
+    launcherMessage.textContent = message;
+    launcherMessage.classList.remove('hidden');
   }
 
   function setRetryVisible(visible) {
@@ -156,6 +171,7 @@
 
   async function fetchCLIs() {
     setLauncherError(null);
+    setLauncherMessage(null);
     setRetryVisible(false);
     cliGrid.innerHTML = '<div class="cli-loading">Loading tools…</div>';
 
@@ -287,6 +303,7 @@
 
     manuallyDisconnected = false;
     setLauncherError(null);
+    setLauncherMessage(null);
     setRetryVisible(false);
 
     if (reconnectTimeoutId) {
@@ -323,6 +340,8 @@
         switch (message.type) {
           case 'authenticated':
             setStatus('connected', 'Connected');
+            setLauncherError(null);
+            setLauncherMessage(null);
             fetchProjects();
             fetchCLIs();
             showScreen(launcherScreen);
@@ -415,6 +434,7 @@
 
   async function launchCLI(cliId, cliName) {
     setLauncherError(null);
+    setLauncherMessage(null);
     setRetryVisible(false);
 
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -502,6 +522,7 @@
 
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
+      setLauncherMessage(null);
       fetchProjects();
       fetchCLIs();
     });
@@ -524,6 +545,7 @@
       if (!name) return;
 
       try {
+        setLauncherMessage(null);
         const response = await apiFetch('/api/projects', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -548,6 +570,57 @@
     });
   }
 
+  if (publishGithubBtn) {
+    publishGithubBtn.addEventListener('click', async () => {
+      if (!selectedProject) {
+        setLauncherError('Select or create a project first.');
+        return;
+      }
+
+      const repoName = window.prompt(
+        'New GitHub repo name:',
+        selectedProject,
+      );
+      if (!repoName) return;
+
+      const makePrivate = window.confirm(
+        'Make this repo private?\n\nOK = Private\nCancel = Public',
+      );
+
+      setLauncherError(null);
+      setLauncherMessage('Publishing to GitHub…');
+
+      publishGithubBtn.disabled = true;
+      try {
+        const response = await apiFetch(
+          `/api/projects/${encodeURIComponent(selectedProject)}/publish/github`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              repoName,
+              visibility: makePrivate ? 'private' : 'public'
+            })
+          },
+        );
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to publish project');
+        }
+
+        const url = data.repo?.url || '';
+        setLauncherMessage(url ? `Published: ${url}` : 'Published to GitHub.');
+      } catch (err) {
+        console.error('Publish error:', err);
+        setLauncherMessage(null);
+        setLauncherError(err.message || 'Failed to publish project');
+      } finally {
+        publishGithubBtn.disabled = false;
+      }
+    });
+  }
+
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
       manuallyDisconnected = true;
@@ -567,6 +640,7 @@
       currentCli = null;
       projects = [];
       setLauncherError(null);
+      setLauncherMessage(null);
       setRetryVisible(false);
       showScreen(loginScreen);
     });

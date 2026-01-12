@@ -8,6 +8,8 @@ services:
     envVars:
       - key: TERMINAL_PASSWORD
         sync: false  # Set in Render dashboard
+      - key: GH_TOKEN
+        sync: false  # Optional: needed for GitHub publish feature
       - key: NODE_ENV
         value: production
       - key: WORKSPACE_DIR

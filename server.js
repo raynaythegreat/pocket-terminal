@@ -4,6 +4,7 @@ const http = require("http");
 const WebSocket = require("ws");
 const pty = require("node-pty");
 const crypto = require("crypto");
+const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
@@ -199,6 +200,137 @@ function getProjectPath(projectName) {
   }
 }
 
+function isValidGitHubRepoSlug(value) {
+  if (!value || typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+
+  // repo or owner/repo
+  const repoOnly = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+  const ownerRepo = /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+  return repoOnly.test(trimmed) || ownerRepo.test(trimmed);
+}
+
+function getToolsEnv() {
+  const homeDir = process.env.HOME || "/tmp";
+  return {
+    ...process.env,
+    PATH: enhancedPath,
+    HOME: homeDir,
+    XDG_CONFIG_HOME: path.join(homeDir, ".config"),
+    XDG_DATA_HOME: path.join(homeDir, ".local/share"),
+    FORCE_COLOR: "1",
+  };
+}
+
+function runCommand(
+  command,
+  args,
+  { cwd, env, timeoutMs = 120000 } = {},
+) {
+  return new Promise((resolve) => {
+    const child = spawn(command, args, {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        // ignore
+      }
+      setTimeout(() => {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // ignore
+        }
+      }, 500);
+    }, timeoutMs);
+
+    child.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    child.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timeoutId);
+      resolve({
+        code: typeof code === "number" ? code : 1,
+        stdout,
+        stderr,
+        timedOut,
+      });
+    });
+
+    child.on("error", (error) => {
+      clearTimeout(timeoutId);
+      resolve({
+        code: 1,
+        stdout,
+        stderr: `${stderr}\n${error.message}`.trim(),
+        timedOut,
+      });
+    });
+  });
+}
+
+function ensureProjectGitIgnore(projectPath) {
+  const gitignorePath = path.join(projectPath, ".gitignore");
+  const defaultLines = [".env", ".DS_Store", "node_modules/"];
+
+  const exists = fs.existsSync(gitignorePath);
+  let current = "";
+  try {
+    current = fs.readFileSync(gitignorePath, "utf8");
+  } catch {
+    // ignore
+  }
+
+  if (!exists) {
+    try {
+      fs.writeFileSync(gitignorePath, `${defaultLines.join("\n")}\n`, {
+        flag: "wx",
+      });
+    } catch {
+      // ignore
+    }
+    return;
+  }
+
+  if (!current) {
+    try {
+      fs.writeFileSync(gitignorePath, `${defaultLines.join("\n")}\n`);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+
+  const existing = new Set(current.split(/\r?\n/));
+  const missing = defaultLines.filter((line) => !existing.has(line));
+  if (!missing.length) return;
+
+  try {
+    fs.appendFileSync(
+      gitignorePath,
+      `${current.endsWith("\n") ? "" : "\n"}${missing.join("\n")}\n`,
+    );
+  } catch {
+    // ignore
+  }
+}
+
 // Get available CLIs endpoint
 app.get("/api/clis", requireSession, (req, res) => {
   const clis = Object.entries(CLI_TOOLS).map(([id, cli]) => ({
@@ -258,7 +390,220 @@ app.post("/api/projects", requireSession, (req, res) => {
     // ignore
   }
 
+  try {
+    fs.writeFileSync(
+      path.join(projectPath, ".gitignore"),
+      ".env\n.DS_Store\nnode_modules/\n",
+      { flag: "wx" },
+    );
+  } catch {
+    // ignore
+  }
+
   res.status(201).json({ success: true, project: { name } });
+});
+
+// Publish a project to a new GitHub repo
+app.post("/api/projects/:name/publish/github", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const repoName =
+    typeof req.body?.repoName === "string" ? req.body.repoName.trim() : "";
+  const visibility =
+    req.body?.visibility === "private" ? "private" : "public";
+
+  if (!isValidGitHubRepoSlug(repoName)) {
+    res.status(400).json({
+      success: false,
+      error: "Invalid repo name (use repo or owner/repo).",
+    });
+    return;
+  }
+
+  const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (!ghToken) {
+    res.status(400).json({
+      success: false,
+      error:
+        "Missing GitHub token. Set GH_TOKEN or GITHUB_TOKEN in your environment.",
+    });
+    return;
+  }
+
+  const ghCommand = resolveCommand("gh", enhancedPath);
+  if (!ghCommand) {
+    res.status(500).json({
+      success: false,
+      error: "GitHub CLI (gh) is not installed on this server.",
+    });
+    return;
+  }
+
+  const gitCommand = resolveCommand("git", enhancedPath);
+  if (!gitCommand) {
+    res.status(500).json({
+      success: false,
+      error: "git is not installed on this server.",
+    });
+    return;
+  }
+
+  const env = {
+    ...getToolsEnv(),
+    GH_TOKEN: ghToken,
+    GITHUB_TOKEN: ghToken,
+  };
+
+  try {
+    ensureProjectGitIgnore(projectPath);
+
+    if (!fs.existsSync(path.join(projectPath, ".git"))) {
+      const init = await runCommand(gitCommand, ["init"], {
+        cwd: projectPath,
+        env,
+      });
+      if (init.timedOut) {
+        res.status(504).json({ success: false, error: "git init timed out" });
+        return;
+      }
+      if (init.code !== 0) {
+        res.status(500).json({
+          success: false,
+          error: init.stderr || init.stdout || "git init failed",
+        });
+        return;
+      }
+    }
+
+    await runCommand(
+      gitCommand,
+      ["config", "user.name", process.env.GIT_AUTHOR_NAME || "Pocket Terminal"],
+      { cwd: projectPath, env },
+    );
+    await runCommand(
+      gitCommand,
+      [
+        "config",
+        "user.email",
+        process.env.GIT_AUTHOR_EMAIL ||
+          "pocket-terminal@users.noreply.github.com",
+      ],
+      { cwd: projectPath, env },
+    );
+
+    const origin = await runCommand(gitCommand, ["remote", "get-url", "origin"], {
+      cwd: projectPath,
+      env,
+    });
+    if (origin.code === 0 && origin.stdout.trim()) {
+      res.status(409).json({
+        success: false,
+        error:
+          "This project already has a git remote named origin. Remove it or publish manually from the terminal.",
+      });
+      return;
+    }
+
+    const add = await runCommand(gitCommand, ["add", "-A"], {
+      cwd: projectPath,
+      env,
+    });
+    if (add.timedOut) {
+      res.status(504).json({ success: false, error: "git add timed out" });
+      return;
+    }
+    if (add.code !== 0) {
+      res.status(500).json({
+        success: false,
+        error: add.stderr || add.stdout || "git add failed",
+      });
+      return;
+    }
+
+    const head = await runCommand(gitCommand, ["rev-parse", "--verify", "HEAD"], {
+      cwd: projectPath,
+      env,
+    });
+    const hasCommit = head.code === 0;
+
+    if (!hasCommit) {
+      const commit = await runCommand(gitCommand, ["commit", "-m", "Initial commit"], {
+        cwd: projectPath,
+        env,
+      });
+      if (commit.timedOut) {
+        res
+          .status(504)
+          .json({ success: false, error: "git commit timed out" });
+        return;
+      }
+      if (commit.code !== 0) {
+        res.status(500).json({
+          success: false,
+          error: commit.stderr || commit.stdout || "git commit failed",
+        });
+        return;
+      }
+    }
+
+    const createArgs = [
+      "repo",
+      "create",
+      repoName,
+      "--source",
+      ".",
+      "--remote",
+      "origin",
+      "--push",
+      "--confirm",
+    ];
+    createArgs.push(visibility === "private" ? "--private" : "--public");
+
+    const create = await runCommand(ghCommand, createArgs, {
+      cwd: projectPath,
+      env,
+      timeoutMs: 300000,
+    });
+    if (create.timedOut) {
+      res.status(504).json({ success: false, error: "GitHub publish timed out" });
+      return;
+    }
+    if (create.code !== 0) {
+      res.status(500).json({
+        success: false,
+        error: create.stderr || create.stdout || "GitHub publish failed",
+      });
+      return;
+    }
+
+    let url = "";
+    const view = await runCommand(ghCommand, ["repo", "view", "--json", "url"], {
+      cwd: projectPath,
+      env,
+    });
+    if (view.code === 0) {
+      try {
+        const data = JSON.parse(view.stdout);
+        url = typeof data?.url === "string" ? data.url : "";
+      } catch {
+        // ignore
+      }
+    }
+
+    res.json({
+      success: true,
+      repo: { url, name: repoName, visibility },
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to publish project",
+    });
+  }
 });
 
 // WebSocket connection handler

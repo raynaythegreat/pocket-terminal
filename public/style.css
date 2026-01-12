@@ -172,6 +172,16 @@ html, body {
   margin-top: 0;
 }
 
+.message {
+  color: rgba(34, 197, 94, 0.95);
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0.25rem 0 0.5rem;
+  font-size: 0.9rem;
+}
+
 .topbar-btn,
 .secondary-btn {
   background: rgba(255, 255, 255, 0.06);
