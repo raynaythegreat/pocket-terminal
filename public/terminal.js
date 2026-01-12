@@ -28,6 +28,7 @@
   const toolbar = document.getElementById('mobile-toolbar');
   const themeToggleButtons = Array.from(document.querySelectorAll('[data-theme-toggle]'));
   const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  const launcherTabButtons = Array.from(document.querySelectorAll('[data-launcher-tab]'));
   const filesList = document.getElementById('files-list');
   const filesFilter = document.getElementById('files-filter');
   const filesPathLabel = document.getElementById('files-path');
@@ -74,8 +75,10 @@
   let manuallyDisconnected = false;
   const THEME_STORAGE_KEY = 'pocket_terminal_theme';
   const PROJECTS_CACHE_KEY = 'pocket_terminal_projects_cache';
+  const LAUNCHER_TAB_STORAGE_KEY = 'pocket_terminal_launcher_tab';
   let activeTheme = null;
   let pendingTerminalInput = null;
+  let launcherTab = 'tools';
 
   let currentFilesDir = '';
   let currentFiles = [];
@@ -94,6 +97,27 @@
     } catch {
       return null;
     }
+  }
+
+  function normalizeLauncherTab(value) {
+    if (value === 'tools' || value === 'files' || value === 'git') return value;
+    return 'tools';
+  }
+
+  function applyLauncherTab(nextTab, { persist = true } = {}) {
+    const normalized = normalizeLauncherTab(nextTab);
+    launcherTab = normalized;
+    document.body.dataset.launcherTab = normalized;
+
+    if (persist) {
+      localStorage.setItem(LAUNCHER_TAB_STORAGE_KEY, normalized);
+    }
+
+    launcherTabButtons.forEach((button) => {
+      const active = button.dataset.launcherTab === normalized;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
   }
 
   function saveCachedProjects(list) {
@@ -556,6 +580,7 @@
       document.body.dataset.screen = 'login';
     } else if (screen === launcherScreen) {
       document.body.dataset.screen = 'launcher';
+      applyLauncherTab(launcherTab, { persist: false });
     } else if (screen === terminalScreen) {
       document.body.dataset.screen = 'terminal';
     } else {
@@ -652,8 +677,17 @@
   }
 
   async function fetchGitStatus() {
-    if (!gitStatusPanel || !selectedProject) {
-      gitStatusPanel.classList.add('hidden');
+    if (!gitStatusPanel) return;
+
+    gitStatusPanel.classList.remove('hidden');
+
+    if (!selectedProject) {
+      if (gitBranchName) gitBranchName.textContent = '—';
+      if (gitCommitCount) gitCommitCount.textContent = '';
+      if (gitStatusContent) {
+        gitStatusContent.innerHTML =
+          '<div class="git-status-empty">Select a project to see git status</div>';
+      }
       return;
     }
 
@@ -665,15 +699,24 @@
       const data = await response.json();
 
       if (!data.isGitRepo) {
-        gitStatusPanel.classList.add('hidden');
+        if (gitBranchName) gitBranchName.textContent = '—';
+        if (gitCommitCount) gitCommitCount.textContent = '';
+        if (gitStatusContent) {
+          gitStatusContent.innerHTML =
+            '<div class="git-status-empty">Not a git repository</div>';
+        }
         return;
       }
 
       renderGitStatus(data);
-      gitStatusPanel.classList.remove('hidden');
     } catch (err) {
       console.error('Failed to fetch git status:', err);
-      gitStatusPanel.classList.add('hidden');
+      if (gitBranchName) gitBranchName.textContent = '—';
+      if (gitCommitCount) gitCommitCount.textContent = '';
+      if (gitStatusContent) {
+        gitStatusContent.innerHTML =
+          '<div class="git-status-empty">Failed to load git status</div>';
+      }
     }
   }
 
@@ -1311,6 +1354,16 @@
   applyTheme(storedTheme || getSystemTheme(), { persist: false });
   themeToggleButtons.forEach((button) => {
     button.addEventListener('click', toggleTheme);
+  });
+
+  applyLauncherTab(
+    normalizeLauncherTab(localStorage.getItem(LAUNCHER_TAB_STORAGE_KEY)),
+    { persist: false },
+  );
+  launcherTabButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      applyLauncherTab(button.dataset.launcherTab);
+    });
   });
 
   document.body.dataset.screen = 'login';
