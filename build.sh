@@ -53,12 +53,13 @@ fi
 echo "Installing openCode CLI (optional)..."
 if command -v curl >/dev/null 2>&1 && command -v bash >/dev/null 2>&1; then
   set +e
-  curl -fsSL https://opencode.ai/install | bash -s -- --prefix ./opencode-bin
+  curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
   OPENCODE_EXIT=$?
   set -e
 
-  if [ "$OPENCODE_EXIT" -eq 0 ] && [ -f ./opencode-bin/opencode ]; then
-    cp ./opencode-bin/opencode ./bin/opencode
+  OPENCODE_SOURCE="${HOME:-/tmp}/.opencode/bin/opencode"
+  if [ "$OPENCODE_EXIT" -eq 0 ] && [ -f "$OPENCODE_SOURCE" ]; then
+    cp "$OPENCODE_SOURCE" ./bin/opencode
     chmod +x ./bin/opencode || true
     echo "openCode CLI installed to ./bin/opencode"
   else

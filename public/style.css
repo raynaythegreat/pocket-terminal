@@ -202,6 +202,39 @@ html, body {
   transform: scale(0.98);
 }
 
+.project-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0.25rem 0 0.5rem;
+}
+
+.project-label {
+  color: var(--muted-2);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.project-select {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  outline: none;
+}
+
+.project-select:focus-visible {
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.22);
+}
+
+.project-select option {
+  background: var(--bg);
+  color: var(--text);
+}
+
 .cli-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

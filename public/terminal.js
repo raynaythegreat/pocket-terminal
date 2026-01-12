@@ -10,6 +10,8 @@
   const launcherError = document.getElementById('launcher-error');
   const retryBtn = document.getElementById('retry-btn');
   const logoutBtn = document.getElementById('logout-btn');
+  const projectSelect = document.getElementById('project-select');
+  const newProjectBtn = document.getElementById('new-project-btn');
   const terminalContainer = document.getElementById('terminal-container');
   const currentCliLabel = document.getElementById('current-cli');
   const exitBtn = document.getElementById('exit-btn');
@@ -37,6 +39,8 @@
   let fitAddon = null;
   let currentCli = null;
   let cliList = [];
+  let projects = [];
+  let selectedProject = localStorage.getItem('terminal_project') || '';
   let reconnectAttempt = 0;
   let reconnectTimeoutId = null;
   let listenersAttached = false;
@@ -77,13 +81,86 @@
     }
   }
 
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  async function apiFetch(url, options = {}) {
+    const headers = { ...(options.headers || {}) };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      localStorage.removeItem('terminal_token');
+      token = null;
+      manuallyDisconnected = true;
+      showScreen(loginScreen);
+      loginError.textContent = 'Please log in again.';
+      throw new Error('Not authenticated');
+    }
+    return response;
+  }
+
+  function renderProjectPicker() {
+    if (!projectSelect) return;
+
+    const normalized = Array.isArray(projects) ? projects : [];
+    const options = [
+      { value: '', label: 'Projects (root)' },
+      ...normalized.map((p) => ({ value: p.name, label: p.name })),
+    ];
+
+    projectSelect.innerHTML = options
+      .map(
+        (opt) =>
+          `<option value="${escapeHtml(opt.value)}">${escapeHtml(opt.label)}</option>`,
+      )
+      .join('');
+
+    const hasSelected =
+      selectedProject &&
+      normalized.some((p) => String(p.name) === String(selectedProject));
+    projectSelect.value = hasSelected ? selectedProject : '';
+
+    if (!hasSelected && selectedProject) {
+      selectedProject = '';
+      localStorage.removeItem('terminal_project');
+    }
+  }
+
+  async function fetchProjects() {
+    if (!projectSelect) return;
+
+    projectSelect.innerHTML = '<option value="">Loading…</option>';
+
+    try {
+      const response = await apiFetch('/api/projects');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      projects = Array.isArray(data.projects) ? data.projects : [];
+      renderProjectPicker();
+    } catch (err) {
+      console.error('Failed to fetch projects:', err);
+      projects = [];
+      projectSelect.innerHTML = '<option value="">Projects (root)</option>';
+    }
+  }
+
   async function fetchCLIs() {
     setLauncherError(null);
     setRetryVisible(false);
     cliGrid.innerHTML = '<div class="cli-loading">Loading tools…</div>';
 
     try {
-      const response = await fetch('/api/clis');
+      const response = await apiFetch('/api/clis');
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -246,6 +323,7 @@
         switch (message.type) {
           case 'authenticated':
             setStatus('connected', 'Connected');
+            fetchProjects();
             fetchCLIs();
             showScreen(launcherScreen);
             break;
@@ -351,6 +429,7 @@
       ws.send(JSON.stringify({
         type: 'launch',
         cli: cliId,
+        project: selectedProject,
         cols: term ? term.cols : 80,
         rows: term ? term.rows : 24
       }));
@@ -394,6 +473,7 @@
       term.clear();
     }
     showScreen(launcherScreen);
+    fetchProjects();
     fetchCLIs();
   });
 
@@ -404,6 +484,7 @@
       term.clear();
     }
     showScreen(launcherScreen);
+    fetchProjects();
     fetchCLIs();
   });
 
@@ -421,7 +502,49 @@
 
   if (retryBtn) {
     retryBtn.addEventListener('click', () => {
+      fetchProjects();
       fetchCLIs();
+    });
+  }
+
+  if (projectSelect) {
+    projectSelect.addEventListener('change', () => {
+      selectedProject = projectSelect.value || '';
+      if (selectedProject) {
+        localStorage.setItem('terminal_project', selectedProject);
+      } else {
+        localStorage.removeItem('terminal_project');
+      }
+    });
+  }
+
+  if (newProjectBtn) {
+    newProjectBtn.addEventListener('click', async () => {
+      const name = window.prompt('Project name (letters, numbers, - or _):');
+      if (!name) return;
+
+      try {
+        const response = await apiFetch('/api/projects', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to create project');
+        }
+
+        selectedProject = data.project?.name || '';
+        if (selectedProject) {
+          localStorage.setItem('terminal_project', selectedProject);
+        }
+
+        fetchProjects();
+      } catch (err) {
+        console.error('Project create error:', err);
+        setLauncherError(err.message || 'Failed to create project');
+      }
     });
   }
 
@@ -442,6 +565,7 @@
       localStorage.removeItem('terminal_token');
       token = null;
       currentCli = null;
+      projects = [];
       setLauncherError(null);
       setRetryVisible(false);
       showScreen(loginScreen);
