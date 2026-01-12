@@ -5,6 +5,7 @@ const WebSocket = require('ws');
 const pty = require('node-pty');
 const crypto = require('crypto');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -12,6 +13,16 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 const PASSWORD = process.env.TERMINAL_PASSWORD || 'changeme';
+
+// Add node_modules/.bin to PATH for CLI tools
+const binPath = path.join(__dirname, 'node_modules', '.bin');
+const enhancedPath = `${binPath}:${process.env.PATH}`;
+
+// Create workspace directory for projects
+const workspaceDir = process.env.WORKSPACE_DIR || path.join(__dirname, 'workspace');
+if (!fs.existsSync(workspaceDir)) {
+  fs.mkdirSync(workspaceDir, { recursive: true });
+}
 
 // Store active sessions and terminals
 const sessions = new Map();
@@ -74,16 +85,24 @@ wss.on('connection', (ws, req) => {
           authenticated = true;
           terminalId = crypto.randomBytes(8).toString('hex');
 
-          // Spawn terminal
+          // Spawn terminal with AI CLI tools in PATH
           const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
           terminal = pty.spawn(shell, [], {
             name: 'xterm-256color',
             cols: message.cols || 80,
             rows: message.rows || 24,
-            cwd: process.env.HOME || '/tmp',
+            cwd: workspaceDir,
             env: {
               ...process.env,
-              TERM: 'xterm-256color'
+              PATH: enhancedPath,
+              TERM: 'xterm-256color',
+              // Pass through API keys for AI CLIs
+              ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+              OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+              GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
+              GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+              XAI_API_KEY: process.env.XAI_API_KEY,
+              GROK_API_KEY: process.env.GROK_API_KEY
             }
           });
 
@@ -161,4 +180,6 @@ setInterval(() => {
 server.listen(PORT, () => {
   console.log(`Pocket Terminal running on port ${PORT}`);
   console.log(`Open http://localhost:${PORT} in your browser`);
+  console.log(`\nAvailable AI CLIs: claude, gemini, codex`);
+  console.log(`Workspace directory: ${workspaceDir}`);
 });
