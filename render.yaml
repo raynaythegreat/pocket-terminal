@@ -2,6 +2,7 @@ services:
   - type: web
     name: pocket-terminal
     runtime: node
+    healthCheckPath: /healthz
     buildCommand: chmod +x build.sh && ./build.sh
     startCommand: npm start
     envVars:
@@ -9,3 +10,5 @@ services:
         sync: false  # Set in Render dashboard
       - key: NODE_ENV
         value: production
+      - key: WORKSPACE_DIR
+        value: /tmp/pocket-terminal-workspace

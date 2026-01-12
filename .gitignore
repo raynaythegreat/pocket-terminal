@@ -3,3 +3,5 @@ node_modules/
 .DS_Store
 workspace/
 bin/
+kimi-cli-deps/
+opencode-bin/

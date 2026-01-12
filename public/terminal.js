@@ -7,6 +7,9 @@
   const passwordInput = document.getElementById('password');
   const loginError = document.getElementById('login-error');
   const cliGrid = document.getElementById('cli-grid');
+  const launcherError = document.getElementById('launcher-error');
+  const retryBtn = document.getElementById('retry-btn');
+  const logoutBtn = document.getElementById('logout-btn');
   const terminalContainer = document.getElementById('terminal-container');
   const currentCliLabel = document.getElementById('current-cli');
   const exitBtn = document.getElementById('exit-btn');
@@ -17,6 +20,8 @@
 
   // CLI Icons
   const CLI_ICONS = {
+    opencode: '🛠️',
+    kimi: '🌙',
     claude: '🤖',
     gemini: '✨',
     codex: '💻',
@@ -32,6 +37,10 @@
   let fitAddon = null;
   let currentCli = null;
   let cliList = [];
+  let reconnectAttempt = 0;
+  let reconnectTimeoutId = null;
+  let listenersAttached = false;
+  let manuallyDisconnected = false;
 
   function setStatus(status, text) {
     statusEl.className = status;
@@ -39,41 +48,75 @@
     statusEl.classList.remove('hidden');
   }
 
+  function setLauncherError(message) {
+    if (!launcherError) return;
+
+    if (!message) {
+      launcherError.textContent = '';
+      launcherError.classList.add('hidden');
+      return;
+    }
+
+    launcherError.textContent = message;
+    launcherError.classList.remove('hidden');
+  }
+
+  function setRetryVisible(visible) {
+    if (!retryBtn) return;
+    retryBtn.classList.toggle('hidden', !visible);
+  }
+
   function showScreen(screen) {
     loginScreen.classList.add('hidden');
     launcherScreen.classList.add('hidden');
     terminalScreen.classList.add('hidden');
     screen.classList.remove('hidden');
+
+    if (screen === loginScreen) {
+      passwordInput.focus();
+    }
   }
 
   async function fetchCLIs() {
+    setLauncherError(null);
+    setRetryVisible(false);
+    cliGrid.innerHTML = '<div class="cli-loading">Loading tools…</div>';
+
     try {
       const response = await fetch('/api/clis');
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
       cliList = await response.json();
       renderCLIGrid();
     } catch (err) {
       console.error('Failed to fetch CLIs:', err);
+      cliGrid.innerHTML = '';
+      setLauncherError('Could not load CLI tools. Please retry.');
+      setRetryVisible(true);
     }
   }
 
   function renderCLIGrid() {
-    cliGrid.innerHTML = cliList.map(cli => `
-      <div class="cli-card" data-cli="${cli.id}">
-        <div class="cli-icon">${CLI_ICONS[cli.id] || '🔧'}</div>
-        <div class="cli-name">${cli.name}</div>
-        <div class="cli-desc">${cli.description}</div>
-      </div>
-    `).join('');
-
-    cliGrid.querySelectorAll('.cli-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const cliId = card.dataset.cli;
-        const cli = cliList.find(c => c.id === cliId);
-        if (cli) {
-          launchCLI(cliId, cli.name);
-        }
-      });
+    const normalized = Array.isArray(cliList) ? cliList : [];
+    const sorted = [...normalized].sort((a, b) => {
+      const aAvailable = a.available !== false;
+      const bAvailable = b.available !== false;
+      if (aAvailable !== bAvailable) return aAvailable ? -1 : 1;
+      return String(a.name || '').localeCompare(String(b.name || ''));
     });
+
+    cliGrid.innerHTML = sorted.map((cli) => {
+      const available = cli.available !== false;
+      return `
+        <button class="cli-card${available ? '' : ' disabled'}" data-cli="${cli.id}" type="button" ${available ? '' : 'disabled'}>
+          ${available ? '' : '<div class="cli-badge">Not installed</div>'}
+          <div class="cli-icon">${CLI_ICONS[cli.id] || '🔧'}</div>
+          <div class="cli-name">${cli.name}</div>
+          <div class="cli-desc">${cli.description}</div>
+        </button>
+      `;
+    }).join('');
   }
 
   function initTerminal() {
@@ -86,26 +129,26 @@
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: {
-        background: '#0f0f1a',
-        foreground: '#e0e0e0',
-        cursor: '#00d9ff',
-        cursorAccent: '#0f0f1a',
-        selection: 'rgba(0, 217, 255, 0.3)',
-        black: '#1a1a2e',
-        red: '#ff6b6b',
-        green: '#00d964',
-        yellow: '#ffc107',
-        blue: '#00d9ff',
-        magenta: '#c792ea',
-        cyan: '#89ddff',
-        white: '#e0e0e0',
+        background: '#0b1020',
+        foreground: '#e6e9f2',
+        cursor: '#4f8cff',
+        cursorAccent: '#0b1020',
+        selection: 'rgba(79, 140, 255, 0.25)',
+        black: '#0b1020',
+        red: '#ef4444',
+        green: '#22c55e',
+        yellow: '#f59e0b',
+        blue: '#4f8cff',
+        magenta: '#a78bfa',
+        cyan: '#22d3ee',
+        white: '#e6e9f2',
         brightBlack: '#444',
-        brightRed: '#ff8a8a',
+        brightRed: '#f87171',
         brightGreen: '#4ade80',
-        brightYellow: '#ffd43b',
-        brightBlue: '#60e1ff',
-        brightMagenta: '#ddb6f2',
-        brightCyan: '#a5f3fc',
+        brightYellow: '#fbbf24',
+        brightBlue: '#7aa8ff',
+        brightMagenta: '#c4b5fd',
+        brightCyan: '#67e8f9',
         brightWhite: '#ffffff'
       },
       scrollback: 10000
@@ -125,8 +168,11 @@
       }
     });
 
-    window.addEventListener('resize', handleResize);
-    terminalContainer.addEventListener('click', () => term.focus());
+    if (!listenersAttached) {
+      window.addEventListener('resize', handleResize);
+      terminalContainer.addEventListener('click', () => term && term.focus());
+      listenersAttached = true;
+    }
   }
 
   function handleResize() {
@@ -142,10 +188,45 @@
     }
   }
 
+  function scheduleReconnect() {
+    if (!token || manuallyDisconnected) return;
+    if (reconnectTimeoutId) return;
+
+    reconnectAttempt += 1;
+    const delay = Math.min(10000, 500 * (2 ** (reconnectAttempt - 1)));
+    setStatus('connecting', `Reconnecting… (${reconnectAttempt})`);
+
+    reconnectTimeoutId = window.setTimeout(() => {
+      reconnectTimeoutId = null;
+      connect();
+    }, delay);
+  }
+
   function connect() {
     if (!token) {
       showScreen(loginScreen);
       return;
+    }
+
+    manuallyDisconnected = false;
+    setLauncherError(null);
+    setRetryVisible(false);
+
+    if (reconnectTimeoutId) {
+      window.clearTimeout(reconnectTimeoutId);
+      reconnectTimeoutId = null;
+    }
+
+    if (ws) {
+      const prev = ws;
+      ws = null;
+      prev.onopen = null;
+      prev.onmessage = null;
+      prev.onclose = null;
+      prev.onerror = null;
+      try {
+        prev.close();
+      } catch (e) {}
     }
 
     setStatus('connecting', 'Connecting...');
@@ -154,6 +235,7 @@
     ws = new WebSocket(`${protocol}//${window.location.host}`);
 
     ws.onopen = () => {
+      reconnectAttempt = 0;
       ws.send(JSON.stringify({ type: 'auth', token }));
     };
 
@@ -199,12 +281,15 @@
             if (message.error.includes('Invalid') || message.error.includes('expired')) {
               localStorage.removeItem('terminal_token');
               token = null;
+              manuallyDisconnected = true;
               showScreen(loginScreen);
               loginError.textContent = 'Session expired. Please log in again.';
             } else {
               console.error('Error:', message.error);
               if (term) {
                 term.writeln('\r\n\x1b[31m[Error: ' + message.error + ']\x1b[0m');
+              } else {
+                setLauncherError(message.error);
               }
             }
             break;
@@ -216,6 +301,8 @@
 
     ws.onclose = () => {
       setStatus('disconnected', 'Disconnected');
+      ws = null;
+      scheduleReconnect();
     };
 
     ws.onerror = (err) => {
@@ -249,6 +336,9 @@
   }
 
   async function launchCLI(cliId, cliName) {
+    setLauncherError(null);
+    setRetryVisible(false);
+
     if (ws && ws.readyState === WebSocket.OPEN) {
       // Kill existing terminal first
       await killCurrentTerminal();
@@ -304,6 +394,7 @@
       term.clear();
     }
     showScreen(launcherScreen);
+    fetchCLIs();
   });
 
   // Switch button - kill terminal and go back to launcher
@@ -313,7 +404,49 @@
       term.clear();
     }
     showScreen(launcherScreen);
+    fetchCLIs();
   });
+
+  if (cliGrid) {
+    cliGrid.addEventListener('click', (e) => {
+      const button = e.target.closest('.cli-card');
+      if (!button || button.disabled) return;
+      const cliId = button.dataset.cli;
+      const cli = cliList.find(c => c.id === cliId);
+      if (cli) {
+        launchCLI(cliId, cli.name);
+      }
+    });
+  }
+
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      fetchCLIs();
+    });
+  }
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      manuallyDisconnected = true;
+      if (reconnectTimeoutId) {
+        window.clearTimeout(reconnectTimeoutId);
+        reconnectTimeoutId = null;
+      }
+      await killCurrentTerminal();
+      if (ws) {
+        try {
+          ws.close();
+        } catch (e) {}
+        ws = null;
+      }
+      localStorage.removeItem('terminal_token');
+      token = null;
+      currentCli = null;
+      setLauncherError(null);
+      setRetryVisible(false);
+      showScreen(loginScreen);
+    });
+  }
 
   // Mobile toolbar buttons
   toolbar.addEventListener('click', (e) => {
