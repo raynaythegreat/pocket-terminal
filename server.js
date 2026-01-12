@@ -24,7 +24,9 @@ const OPENCODE_BINARY =
 const nodeModulesBin = path.join(__dirname, "node_modules", ".bin");
 const localBin = path.join(__dirname, "bin");
 const kimiBin = path.join(__dirname, "kimi-cli-deps", "bin");
-const enhancedPath = `${localBin}:${kimiBin}:${nodeModulesBin}:${process.env.PATH}`;
+const enhancedPath = [localBin, kimiBin, nodeModulesBin, process.env.PATH]
+  .filter(Boolean)
+  .join(path.delimiter);
 
 // Create workspace directory for projects
 const workspaceDir =
@@ -85,9 +87,8 @@ const CLI_TOOLS = {
   },
   copilot: {
     name: "GitHub Copilot",
-    command: "gh",
-    args: ["copilot"],
-    description: "AI pair programmer from GitHub",
+    command: "copilot",
+    description: "GitHub Copilot CLI (interactive)",
   },
   github: {
     name: "GitHub CLI",

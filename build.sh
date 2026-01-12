@@ -15,11 +15,12 @@ fi
 echo "Installing GitHub CLI (optional)..."
 if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
   # Download and install gh CLI
-  GH_VERSION="2.45.0"
+  GH_VERSION="${GH_VERSION:-2.83.2}"
   if curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" -o gh.tar.gz; then
     tar -xzf gh.tar.gz
     if [ -f "gh_${GH_VERSION}_linux_amd64/bin/gh" ]; then
       mv "gh_${GH_VERSION}_linux_amd64/bin/gh" ./bin/
+      chmod +x ./bin/gh || true
       echo "GitHub CLI installed to ./bin/gh"
     else
       echo "GitHub CLI download succeeded but binary not found; skipping"
@@ -30,6 +31,17 @@ if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
   fi
 else
   echo "curl/tar not available; skipping GitHub CLI install"
+fi
+
+echo "Installing GitHub Copilot CLI (optional)..."
+if command -v npm >/dev/null 2>&1; then
+  if npm install --omit=dev --no-save @github/copilot; then
+    echo "GitHub Copilot CLI installed (node_modules/.bin/copilot)"
+  else
+    echo "GitHub Copilot CLI install failed; skipping"
+  fi
+else
+  echo "npm not available; skipping GitHub Copilot CLI install"
 fi
 
 echo "Installing Kimi CLI (optional)..."
