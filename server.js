@@ -71,6 +71,12 @@ const CLI_TOOLS = {
     command: "grok",
     description: "Sign in with your xAI account",
   },
+  copilot: {
+    name: "GitHub Copilot",
+    command: "gh",
+    args: ["copilot"],
+    description: "AI pair programmer from GitHub",
+  },
   github: {
     name: "GitHub CLI",
     command: "gh",
@@ -606,6 +612,109 @@ app.post("/api/projects/:name/publish/github", requireSession, async (req, res) 
   }
 });
 
+// Get git status for a project
+app.get("/api/projects/:name/git-status", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const gitCommand = resolveCommand("git", enhancedPath);
+  if (!gitCommand) {
+    res.status(500).json({
+      success: false,
+      error: "git is not installed on this server.",
+    });
+    return;
+  }
+
+  const env = getToolsEnv();
+
+  try {
+    // Check if it's a git repository
+    const isGitRepo = await runCommand(
+      gitCommand,
+      ["rev-parse", "--git-dir"],
+      { cwd: projectPath, env, timeoutMs: 5000 }
+    );
+
+    if (isGitRepo.code !== 0) {
+      res.json({
+        success: true,
+        isGitRepo: false,
+        files: [],
+      });
+      return;
+    }
+
+    // Get status with porcelain format
+    const status = await runCommand(
+      gitCommand,
+      ["status", "--porcelain", "--untracked-files=all"],
+      { cwd: projectPath, env, timeoutMs: 10000 }
+    );
+
+    if (status.timedOut) {
+      res.status(504).json({ success: false, error: "git status timed out" });
+      return;
+    }
+
+    // Parse git status output
+    const files = status.stdout
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => {
+        const statusCode = line.substring(0, 2);
+        const filePath = line.substring(3);
+
+        let status = "unknown";
+        if (statusCode === "??") status = "untracked";
+        else if (statusCode[0] === "M" || statusCode[1] === "M") status = "modified";
+        else if (statusCode[0] === "A") status = "added";
+        else if (statusCode[0] === "D") status = "deleted";
+        else if (statusCode[0] === "R") status = "renamed";
+        else if (statusCode[0] === "C") status = "copied";
+
+        const staged = statusCode[0] !== " " && statusCode[0] !== "?";
+
+        return {
+          path: filePath,
+          status,
+          staged,
+          statusCode,
+        };
+      });
+
+    // Get current branch
+    const branch = await runCommand(
+      gitCommand,
+      ["rev-parse", "--abbrev-ref", "HEAD"],
+      { cwd: projectPath, env, timeoutMs: 5000 }
+    );
+
+    // Get commit count
+    const commitCount = await runCommand(
+      gitCommand,
+      ["rev-list", "--count", "HEAD"],
+      { cwd: projectPath, env, timeoutMs: 5000 }
+    );
+
+    res.json({
+      success: true,
+      isGitRepo: true,
+      files,
+      branch: branch.code === 0 ? branch.stdout.trim() : "unknown",
+      commitCount: commitCount.code === 0 ? parseInt(commitCount.stdout.trim()) : 0,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to get git status",
+    });
+  }
+});
+
 // WebSocket connection handler
 wss.on("connection", (ws) => {
   let authenticated = false;
@@ -722,8 +831,9 @@ wss.on("connection", (ws) => {
         }
 
         try {
-          // Spawn the CLI directly (not through bash -c)
-          const ptyProcess = pty.spawn(resolvedCommand, [], {
+          // Spawn the CLI with args if specified
+          const args = cli.args || [];
+          const ptyProcess = pty.spawn(resolvedCommand, args, {
             name: "xterm-256color",
             cols,
             rows,

@@ -14,6 +14,11 @@
   const projectSelect = document.getElementById('project-select');
   const newProjectBtn = document.getElementById('new-project-btn');
   const publishGithubBtn = document.getElementById('publish-github-btn');
+  const gitStatusPanel = document.getElementById('git-status-panel');
+  const gitBranchName = document.getElementById('git-branch-name');
+  const gitCommitCount = document.getElementById('git-commit-count');
+  const gitStatusContent = document.getElementById('git-status-content');
+  const refreshGitBtn = document.getElementById('refresh-git-btn');
   const terminalContainer = document.getElementById('terminal-container');
   const currentCliLabel = document.getElementById('current-cli');
   const exitBtn = document.getElementById('exit-btn');
@@ -30,6 +35,7 @@
     gemini: '✨',
     codex: '💻',
     grok: '🧠',
+    copilot: '🤝',
     github: '🐙',
     bash: '⌨️'
   };
@@ -167,6 +173,69 @@
       projects = [];
       projectSelect.innerHTML = '<option value="">Projects (root)</option>';
     }
+  }
+
+  async function fetchGitStatus() {
+    if (!gitStatusPanel || !selectedProject) {
+      gitStatusPanel.classList.add('hidden');
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`/api/projects/${encodeURIComponent(selectedProject)}/git-status`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+
+      if (!data.isGitRepo) {
+        gitStatusPanel.classList.add('hidden');
+        return;
+      }
+
+      renderGitStatus(data);
+      gitStatusPanel.classList.remove('hidden');
+    } catch (err) {
+      console.error('Failed to fetch git status:', err);
+      gitStatusPanel.classList.add('hidden');
+    }
+  }
+
+  function renderGitStatus(data) {
+    if (!gitStatusPanel) return;
+
+    // Update branch name and commit count
+    if (gitBranchName && data.branch) {
+      gitBranchName.textContent = data.branch;
+    }
+    if (gitCommitCount && data.commitCount !== undefined) {
+      gitCommitCount.textContent = `${data.commitCount} commits`;
+    }
+
+    // Render files
+    if (!gitStatusContent) return;
+
+    if (!data.files || data.files.length === 0) {
+      gitStatusContent.innerHTML = '<div class="git-status-empty">No changes</div>';
+      return;
+    }
+
+    const filesHtml = data.files
+      .map((file) => {
+        const statusClass = file.status.toLowerCase();
+        const stagedIndicator = file.staged ? '<span class="file-staged-indicator">●</span>' : '';
+
+        return `
+          <div class="file-item">
+            <span class="file-status-badge ${statusClass}">${file.status}</span>
+            <span class="file-path" title="${escapeHtml(file.path)}">${escapeHtml(file.path)}</span>
+            ${stagedIndicator}
+          </div>
+        `;
+      })
+      .join('');
+
+    gitStatusContent.innerHTML = filesHtml;
   }
 
   async function fetchCLIs() {
@@ -344,6 +413,7 @@
             setLauncherMessage(null);
             fetchProjects();
             fetchCLIs();
+            fetchGitStatus();
             showScreen(launcherScreen);
             break;
 
@@ -495,6 +565,7 @@
     showScreen(launcherScreen);
     fetchProjects();
     fetchCLIs();
+    fetchGitStatus();
   });
 
   // Switch button - kill terminal and go back to launcher
@@ -506,6 +577,7 @@
     showScreen(launcherScreen);
     fetchProjects();
     fetchCLIs();
+    fetchGitStatus();
   });
 
   if (cliGrid) {
@@ -536,6 +608,13 @@
       } else {
         localStorage.removeItem('terminal_project');
       }
+      fetchGitStatus();
+    });
+  }
+
+  if (refreshGitBtn) {
+    refreshGitBtn.addEventListener('click', () => {
+      fetchGitStatus();
     });
   }
 
@@ -563,6 +642,7 @@
         }
 
         fetchProjects();
+        fetchGitStatus();
       } catch (err) {
         console.error('Project create error:', err);
         setLauncherError(err.message || 'Failed to create project');
@@ -611,6 +691,7 @@
 
         const url = data.repo?.url || '';
         setLauncherMessage(url ? `Published: ${url}` : 'Published to GitHub.');
+        fetchGitStatus();
       } catch (err) {
         console.error('Publish error:', err);
         setLauncherMessage(null);

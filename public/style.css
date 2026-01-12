@@ -320,6 +320,151 @@ html, body {
   color: var(--text);
 }
 
+/* Git Status Panel */
+.git-status-panel {
+  margin: 0.75rem 0;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.git-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.git-status-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-icon {
+  font-size: 1.1rem;
+}
+
+#git-branch-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--accent);
+  font-family: monospace;
+}
+
+.git-commit-count {
+  font-size: 0.8rem;
+  color: var(--muted-2);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s;
+  opacity: 0.7;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  opacity: 1;
+}
+
+.icon-btn:active {
+  transform: scale(0.95);
+}
+
+.git-status-content {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.git-status-empty {
+  text-align: center;
+  color: var(--muted-2);
+  padding: 1rem;
+  font-size: 0.85rem;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  margin-bottom: 4px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+
+.file-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.file-status-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.file-status-badge.modified {
+  background: rgba(245, 158, 11, 0.2);
+  color: rgba(245, 158, 11, 1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.file-status-badge.added {
+  background: rgba(34, 197, 94, 0.2);
+  color: rgba(34, 197, 94, 1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.file-status-badge.deleted {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgba(239, 68, 68, 1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.file-status-badge.untracked {
+  background: rgba(79, 140, 255, 0.2);
+  color: rgba(79, 140, 255, 1);
+  border: 1px solid rgba(79, 140, 255, 0.3);
+}
+
+.file-status-badge.renamed,
+.file-status-badge.copied {
+  background: rgba(168, 85, 247, 0.2);
+  color: rgba(168, 85, 247, 1);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.file-path {
+  flex: 1;
+  color: var(--text);
+  font-family: monospace;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-staged-indicator {
+  font-size: 0.7rem;
+  color: var(--success);
+  flex-shrink: 0;
+}
+
 /* CLI Section */
 .cli-section {
   margin-top: 0.5rem;

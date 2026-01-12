@@ -59,6 +59,22 @@
       </div>
     </div>
     <p id="launcher-message" class="message hidden"></p>
+
+    <!-- Git Status Panel -->
+    <div id="git-status-panel" class="git-status-panel hidden">
+      <div class="git-status-header">
+        <div class="git-status-title">
+          <span class="git-icon">📝</span>
+          <span id="git-branch-name">main</span>
+          <span class="git-commit-count" id="git-commit-count"></span>
+        </div>
+        <button id="refresh-git-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
+      </div>
+      <div id="git-status-content" class="git-status-content">
+        <div class="git-status-empty">No changes</div>
+      </div>
+    </div>
+
     <div class="cli-section">
       <div class="cli-section-header">Available CLI Tools</div>
       <div id="cli-grid" class="cli-grid">
