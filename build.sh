@@ -35,13 +35,24 @@ fi
 
 echo "Installing GitHub Copilot CLI (optional)..."
 if command -v npm >/dev/null 2>&1; then
-  if npm install --omit=dev --no-save @github/copilot; then
+  if npm install --omit=dev --no-save --no-package-lock @github/copilot; then
     echo "GitHub Copilot CLI installed (node_modules/.bin/copilot)"
   else
     echo "GitHub Copilot CLI install failed; skipping"
   fi
 else
   echo "npm not available; skipping GitHub Copilot CLI install"
+fi
+
+echo "Installing Kilo Code CLI (optional)..."
+if command -v npm >/dev/null 2>&1; then
+  if npm install --omit=dev --no-save --no-package-lock @kilocode/cli; then
+    echo "Kilo Code CLI installed (node_modules/.bin/kilo, node_modules/.bin/kilocode)"
+  else
+    echo "Kilo Code CLI install failed; skipping"
+  fi
+else
+  echo "npm not available; skipping Kilo Code CLI install"
 fi
 
 echo "Installing Kimi CLI (optional)..."
