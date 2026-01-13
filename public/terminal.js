@@ -570,12 +570,8 @@
   async function handleCopyAction() {
     if (!term) return;
 
-    let text = getTerminalSelectionText();
-    if (!text) {
-      const ok = window.confirm('No selection. Copy the visible terminal output?');
-      if (!ok) return;
-      text = getTerminalViewportText();
-    }
+    const selection = getTerminalSelectionText();
+    const text = selection || getTerminalViewportText();
 
     if (!text) {
       flashStatus('Nothing to copy');
@@ -583,7 +579,7 @@
     }
 
     const ok = await copyToClipboard(text);
-    flashStatus(ok ? 'Copied to clipboard' : 'Copy canceled');
+    flashStatus(ok ? (selection ? 'Copied selection' : 'Copied screen') : 'Copy canceled');
   }
 
   async function handlePasteAction() {
