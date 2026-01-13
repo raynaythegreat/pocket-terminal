@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0b1020">
@@ -90,7 +90,19 @@
               <span class="files-title-text">Files</span>
               <span id="files-count" class="files-count"></span>
             </div>
-            <button id="refresh-files-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
+            <div class="files-header-actions">
+              <button id="toggle-history-btn" class="icon-btn" type="button" title="Recent files">⏱️</button>
+              <button id="refresh-files-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
+            </div>
+          </div>
+          <div id="file-history-panel" class="file-history-panel hidden">
+            <div class="file-history-header">
+              <span class="file-history-title">Recent Files</span>
+              <button id="clear-history-btn" class="icon-btn" type="button" title="Clear history">🗑️</button>
+            </div>
+            <div id="file-history-list" class="file-history-list">
+              <div class="files-empty">No recent files</div>
+            </div>
           </div>
           <div class="files-nav">
             <button id="files-up-btn" class="icon-btn" type="button" title="Up">⬆️</button>

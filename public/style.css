@@ -238,7 +238,7 @@ html, body {
   justify-content: space-between;
   gap: 12px;
   min-height: 2.25rem;
-  padding: 0.5rem 0 0.25rem;
+  padding: 0.5rem 0;
   flex-wrap: wrap;
 }
 
@@ -252,7 +252,7 @@ html, body {
   border: 1px solid rgba(34, 197, 94, 0.18);
   border-radius: 12px;
   padding: 10px 12px;
-  margin: 0.25rem 0 0.5rem;
+  margin: 0 0 0.75rem;
   font-size: 0.9rem;
 }
 
@@ -266,6 +266,7 @@ html, body {
   width: 100%;
   max-width: 1100px;
   margin: 0 auto;
+  padding-top: 8px;
 }
 
 .launcher-sidebar,
@@ -277,6 +278,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
 }
 
 .launcher-main {
@@ -303,8 +305,12 @@ html, body {
   border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--surface);
-  position: relative;
-  z-index: 5;
+  backdrop-filter: blur(10px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
 }
 
 .launcher-tab {
@@ -348,6 +354,95 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.files-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-history-panel {
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.file-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.file-history-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.file-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--control);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  width: 100%;
+}
+
+.file-history-item:hover {
+  background: var(--control-hover);
+  border-color: var(--border-strong);
+  transform: translateX(2px);
+}
+
+.file-history-item:active {
+  transform: scale(0.98);
+}
+
+.file-history-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.file-history-details {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-history-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  font-size: 0.8rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-history-project {
+  font-size: 0.7rem;
+  color: var(--muted-2);
 }
 
 .files-title {
@@ -558,6 +653,10 @@ html, body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     'Courier New', monospace;
   white-space: pre;
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
 }
 
 .file-modal-editor {
@@ -846,7 +945,7 @@ html, body {
 
 /* Project Section */
 .project-section {
-  margin: 0.75rem 0;
+  margin: 0;
   padding: 1rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -857,9 +956,10 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 0.75rem;
+  row-gap: 12px;
 }
 
 .project-header-left {
@@ -959,7 +1059,7 @@ html, body {
 
 /* Git Status Panel */
 .git-status-panel {
-  margin: 0.75rem 0;
+  margin: 0;
   padding: 1rem;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1159,7 +1259,7 @@ html, body {
 
 /* CLI Section */
 .cli-section {
-  margin-top: 0.5rem;
+  margin-top: 0;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -1354,6 +1454,17 @@ html, body {
   height: 100%;
 }
 
+#terminal-container .xterm-rows {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+#terminal-container .xterm-selection {
+  background-color: rgba(79, 140, 255, 0.35) !important;
+}
+
 /* Mobile Toolbar */
 #mobile-toolbar {
   display: grid;
@@ -1431,8 +1542,26 @@ html, body {
 }
 
 @media (max-width: 899px) {
+  .launcher-body {
+    gap: 0;
+    padding-top: 0;
+  }
+
   .launcher-tabs {
     display: flex;
+    margin-bottom: 12px;
+  }
+
+  .launcher-sidebar {
+    gap: 12px;
+  }
+
+  .launcher-sidebar > * {
+    margin-bottom: 0;
+  }
+
+  body[data-launcher-tab="tools"] .project-section {
+    margin-bottom: 12px;
   }
 
   body[data-launcher-tab="tools"] .files-panel,
@@ -1440,9 +1569,17 @@ html, body {
     display: none;
   }
 
+  body[data-launcher-tab="files"] .project-section {
+    margin-bottom: 12px;
+  }
+
   body[data-launcher-tab="files"] .launcher-main,
   body[data-launcher-tab="files"] #git-status-panel {
     display: none;
+  }
+
+  body[data-launcher-tab="git"] .project-section {
+    margin-bottom: 12px;
   }
 
   body[data-launcher-tab="git"] .launcher-main,
@@ -1470,6 +1607,7 @@ html, body {
   .launcher-topbar {
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
   }
 
   .launcher-actions {
@@ -1478,6 +1616,33 @@ html, body {
 
   .launcher-subtitle {
     display: none;
+  }
+
+  .launcher-tabs {
+    padding: 6px;
+    margin-bottom: 10px;
+  }
+
+  .launcher-tab {
+    padding: 8px 6px;
+    font-size: 0.85rem;
+  }
+
+  .project-section {
+    padding: 0.85rem;
+  }
+
+  .project-header {
+    gap: 10px;
+    row-gap: 10px;
+  }
+
+  .files-panel {
+    padding: 0.85rem;
+  }
+
+  .git-status-panel {
+    padding: 0.85rem;
   }
 
   .action-btn {

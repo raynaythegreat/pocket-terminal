@@ -71,6 +71,10 @@
   const githubCommitMessageInput = document.getElementById('github-commit-message');
   const githubModalError = document.getElementById('github-modal-error');
   const githubModalMessage = document.getElementById('github-modal-message');
+  const toggleHistoryBtn = document.getElementById('toggle-history-btn');
+  const fileHistoryPanel = document.getElementById('file-history-panel');
+  const fileHistoryList = document.getElementById('file-history-list');
+  const clearHistoryBtn = document.getElementById('clear-history-btn');
 
   // CLI Icons
   const CLI_ICONS = {
@@ -120,6 +124,78 @@
   let githubReposFullyLoaded = false;
   let githubReposLoading = false;
   let githubSelectedRepoFullName = '';
+  let fileHistory = [];
+  const FILE_HISTORY_STORAGE_KEY = 'pocket_terminal_file_history';
+  const MAX_FILE_HISTORY = 20;
+
+  function loadFileHistory() {
+    try {
+      const raw = localStorage.getItem(FILE_HISTORY_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter(item => item?.path && item?.project) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveFileHistory() {
+    try {
+      localStorage.setItem(FILE_HISTORY_STORAGE_KEY, JSON.stringify(fileHistory.slice(0, MAX_FILE_HISTORY)));
+    } catch {
+      // ignore
+    }
+  }
+
+  function addToFileHistory(project, filePath) {
+    if (!project || !filePath) return;
+
+    // Remove existing entry for this file
+    fileHistory = fileHistory.filter(item =>
+      !(item.project === project && item.path === filePath)
+    );
+
+    // Add to beginning
+    fileHistory.unshift({
+      project,
+      path: filePath,
+      timestamp: Date.now()
+    });
+
+    // Keep only MAX_FILE_HISTORY items
+    fileHistory = fileHistory.slice(0, MAX_FILE_HISTORY);
+    saveFileHistory();
+    renderFileHistory();
+  }
+
+  function clearFileHistory() {
+    fileHistory = [];
+    saveFileHistory();
+    renderFileHistory();
+  }
+
+  function renderFileHistory() {
+    if (!fileHistoryList) return;
+
+    if (!fileHistory.length) {
+      fileHistoryList.innerHTML = '<div class="files-empty">No recent files</div>';
+      return;
+    }
+
+    fileHistoryList.innerHTML = fileHistory.map(item => {
+      const icon = '📄';
+      const fileName = item.path.split('/').pop() || item.path;
+      return `
+        <button class="file-history-item" type="button" data-history-project="${escapeHtml(item.project)}" data-history-path="${escapeHtml(item.path)}">
+          <span class="file-history-icon">${icon}</span>
+          <div class="file-history-details">
+            <div class="file-history-name" title="${escapeHtml(item.path)}">${escapeHtml(fileName)}</div>
+            <div class="file-history-project">${escapeHtml(item.project)}</div>
+          </div>
+        </button>
+      `;
+    }).join('');
+  }
 
   function loadCachedProjects() {
     try {
@@ -727,11 +803,22 @@
     launchCLI('bash', 'Bash Shell');
   }
 
-  async function openProjectFile(filePath) {
+  async function openProjectFile(filePath, projectName = null) {
     if (!fileModalTitle || !fileModalContent || !fileModalEditor) return;
-    if (!selectedProject) {
+    const targetProject = projectName || selectedProject;
+    if (!targetProject) {
       setFilesError('Select a project first.');
       return;
+    }
+
+    // If opening a file from a different project, switch to it
+    if (projectName && projectName !== selectedProject) {
+      selectedProject = projectName;
+      if (projectSelect) projectSelect.value = projectName;
+      localStorage.setItem('terminal_project', projectName);
+      fetchFiles('');
+      fetchGitStatus();
+      fetchGitRepo();
     }
 
     activeFilePath = filePath;
@@ -745,7 +832,7 @@
 
     try {
       const response = await apiFetch(
-        `/api/projects/${encodeURIComponent(selectedProject)}/file?path=${encodeURIComponent(filePath)}`,
+        `/api/projects/${encodeURIComponent(targetProject)}/file?path=${encodeURIComponent(filePath)}`,
       );
       const data = await response.json();
       if (!response.ok || !data.success) {
@@ -755,6 +842,9 @@
       activeFileContent = typeof data.content === 'string' ? data.content : '';
       fileModalContent.textContent = activeFileContent;
       fileModalEditor.value = activeFileContent;
+
+      // Add to file history
+      addToFileHistory(targetProject, filePath);
     } catch (err) {
       console.error('Failed to open file:', err);
       fileModalContent.textContent = err.message || 'Failed to open file';
@@ -1305,7 +1395,58 @@
     });
 
     fitAddon = new FitAddon.FitAddon();
-    const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+
+    // Configure web links to open in popup for OAuth flows
+    const webLinksAddon = new WebLinksAddon.WebLinksAddon((event, uri) => {
+      event.preventDefault();
+
+      // Check if this looks like an OAuth or authentication URL
+      const isAuthUrl = /login|auth|oauth|authenticate|authorize|verify|callback/i.test(uri);
+
+      if (isAuthUrl) {
+        // Open OAuth URLs in a centered popup window
+        const isMobile = window.innerWidth <= 768;
+        const width = isMobile ? Math.min(window.screen.width - 40, 600) : 600;
+        const height = isMobile ? Math.min(window.screen.height - 80, 700) : 700;
+        const left = (window.screen.width - width) / 2;
+        const top = (window.screen.height - height) / 2;
+
+        // Show helpful message in terminal
+        if (term) {
+          term.writeln('\r\n\x1b[36m[Opening authentication window...]\x1b[0m');
+          term.writeln('\x1b[36m[Complete the login and close the window when done]\x1b[0m\r\n');
+        }
+
+        const popup = window.open(
+          uri,
+          'OAuth Login',
+          `width=${width},height=${height},left=${left},top=${top},toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes`
+        );
+
+        if (popup) {
+          popup.focus();
+
+          // Check if popup was closed to give feedback
+          const checkClosed = setInterval(() => {
+            if (popup.closed) {
+              clearInterval(checkClosed);
+              if (term) {
+                term.writeln('\x1b[32m[Authentication window closed]\x1b[0m\r\n');
+              }
+            }
+          }, 500);
+        } else {
+          // Fallback if popup blocked
+          if (term) {
+            term.writeln('\x1b[33m[Popup blocked - opening in new tab]\x1b[0m\r\n');
+          }
+          window.open(uri, '_blank');
+        }
+      } else {
+        // Open other links in new tab
+        window.open(uri, '_blank');
+      }
+    });
 
     term.loadAddon(fitAddon);
     term.loadAddon(webLinksAddon);
@@ -1865,6 +2006,40 @@
     });
   }
 
+  if (toggleHistoryBtn) {
+    toggleHistoryBtn.addEventListener('click', () => {
+      if (!fileHistoryPanel) return;
+      const isHidden = fileHistoryPanel.classList.contains('hidden');
+      fileHistoryPanel.classList.toggle('hidden', !isHidden);
+      if (isHidden) {
+        renderFileHistory();
+      }
+    });
+  }
+
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', () => {
+      if (window.confirm('Clear file history?')) {
+        clearFileHistory();
+      }
+    });
+  }
+
+  if (fileHistoryList) {
+    fileHistoryList.addEventListener('click', (e) => {
+      const item = e.target.closest('.file-history-item');
+      if (!item) return;
+      const project = item.dataset.historyProject || '';
+      const filePath = item.dataset.historyPath || '';
+      if (!project || !filePath) return;
+
+      openProjectFile(filePath, project);
+      if (fileHistoryPanel) {
+        fileHistoryPanel.classList.add('hidden');
+      }
+    });
+  }
+
   if (filesList) {
     filesList.addEventListener('click', (e) => {
       const row = e.target.closest('.file-row');
@@ -2161,6 +2336,10 @@
       applyLauncherTab(button.dataset.launcherTab);
     });
   });
+
+  // Load file history
+  fileHistory = loadFileHistory();
+  renderFileHistory();
 
   document.body.dataset.screen = 'login';
 
