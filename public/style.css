@@ -1353,9 +1353,9 @@ html, body {
 
 /* Mobile Toolbar */
 #mobile-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
   padding: 8px;
   background: var(--surface);
   border-top: 1px solid var(--border);
@@ -1363,8 +1363,9 @@ html, body {
 }
 
 #mobile-toolbar button {
-  flex: 1;
-  min-width: 40px;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
   padding: 12px 8px;
   font-size: 12px;
   font-weight: 600;
@@ -1526,6 +1527,32 @@ html, body {
     padding: 3px 7px;
     font-size: 10px;
   }
+
+  #terminal-header {
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "exit . actions"
+      "title title title";
+    row-gap: 4px;
+  }
+
+  #terminal-header #exit-btn {
+    grid-area: exit;
+  }
+
+  #terminal-header .terminal-actions {
+    grid-area: actions;
+  }
+
+  #terminal-header #current-cli {
+    grid-area: title;
+    text-align: left;
+  }
+
+  .header-btn {
+    padding: 6px 10px;
+    font-size: 0.82rem;
+  }
 }
 
 @media (min-width: 900px) {
@@ -1560,6 +1587,12 @@ html, body {
   }
 }
 
+@media (min-width: 480px) {
+  #mobile-toolbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
 /* Desktop adjustments */
 @media (min-width: 768px) {
   .cli-grid {
@@ -1590,6 +1623,14 @@ html, body {
   }
 }
 
-body[data-screen="terminal"] #status {
-  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+@media (max-width: 479px) {
+  body[data-screen="terminal"] #status {
+    bottom: calc(170px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (min-width: 480px) and (max-width: 767px) {
+  body[data-screen="terminal"] #status {
+    bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+  }
 }
