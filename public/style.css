@@ -297,11 +297,14 @@ html, body {
 
 .launcher-tabs {
   display: none;
+  width: 100%;
   gap: 8px;
   padding: 8px;
   border-radius: 14px;
   border: 1px solid var(--border);
   background: var(--surface);
+  position: relative;
+  z-index: 5;
 }
 
 .launcher-tab {
