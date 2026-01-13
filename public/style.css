@@ -692,6 +692,11 @@ html, body {
   border-color: rgba(79, 140, 255, 0.4);
 }
 
+.danger-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
 .project-selector {
   width: 100%;
 }

@@ -14,6 +14,7 @@
   const projectSelect = document.getElementById('project-select');
   const newProjectBtn = document.getElementById('new-project-btn');
   const publishGithubBtn = document.getElementById('publish-github-btn');
+  const deleteProjectBtn = document.getElementById('delete-project-btn');
   const gitStatusPanel = document.getElementById('git-status-panel');
   const gitBranchName = document.getElementById('git-branch-name');
   const gitCommitCount = document.getElementById('git-commit-count');
@@ -82,6 +83,9 @@
   let listenersAttached = false;
   let manuallyDisconnected = false;
   let terminalFontSize = null;
+  let statusState = { status: 'disconnected', text: 'Disconnected' };
+  let statusRevision = 0;
+  let statusFlashTimeoutId = null;
   const THEME_STORAGE_KEY = 'pocket_terminal_theme';
   const PROJECTS_CACHE_KEY = 'pocket_terminal_projects_cache';
   const LAUNCHER_TAB_STORAGE_KEY = 'pocket_terminal_launcher_tab';
@@ -528,6 +532,60 @@
     }
   }
 
+  function getTerminalSelectionText() {
+    if (!term || typeof term.getSelection !== 'function') return '';
+    try {
+      return term.getSelection() || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function getTerminalViewportText() {
+    if (!term) return '';
+    const active = term?.buffer?.active;
+    const viewportY = active && typeof active.viewportY === 'number' ? active.viewportY : null;
+    if (viewportY === null || typeof term.selectLines !== 'function') return '';
+
+    try {
+      const rows = Math.max(1, Number(term.rows) || 24);
+      term.selectLines(viewportY, viewportY + rows - 1);
+      const text = getTerminalSelectionText();
+      if (typeof term.clearSelection === 'function') {
+        term.clearSelection();
+      }
+      return text;
+    } catch {
+      try {
+        if (typeof term.clearSelection === 'function') {
+          term.clearSelection();
+        }
+      } catch {
+        // ignore
+      }
+      return '';
+    }
+  }
+
+  async function handleCopyAction() {
+    if (!term) return;
+
+    let text = getTerminalSelectionText();
+    if (!text) {
+      const ok = window.confirm('No selection. Copy the visible terminal output?');
+      if (!ok) return;
+      text = getTerminalViewportText();
+    }
+
+    if (!text) {
+      flashStatus('Nothing to copy');
+      return;
+    }
+
+    const ok = await copyToClipboard(text);
+    flashStatus(ok ? 'Copied to clipboard' : 'Copy canceled');
+  }
+
   async function handlePasteAction() {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
@@ -543,16 +601,50 @@
     if (term?.paste) {
       term.paste(text);
       term.focus();
+      flashStatus('Pasted');
       return;
     }
 
     ws.send(JSON.stringify({ type: 'input', data: text }));
+    flashStatus('Pasted');
   }
 
   function setStatus(status, text) {
-    statusEl.className = status;
-    statusText.textContent = text;
+    const normalizedStatus = typeof status === 'string' ? status : 'connected';
+    const normalizedText = typeof text === 'string' ? text : String(text || '');
+
+    statusState = { status: normalizedStatus, text: normalizedText };
+    statusRevision += 1;
+    if (statusFlashTimeoutId) {
+      window.clearTimeout(statusFlashTimeoutId);
+      statusFlashTimeoutId = null;
+    }
+
+    statusEl.className = normalizedStatus;
+    statusText.textContent = normalizedText;
     statusEl.classList.remove('hidden');
+  }
+
+  function flashStatus(text, { durationMs = 1600 } = {}) {
+    if (!statusEl || !statusText) return;
+    const message = typeof text === 'string' ? text.trim() : String(text || '').trim();
+    if (!message) return;
+
+    const revisionAtFlash = statusRevision;
+    statusText.textContent = message;
+    statusEl.className = statusState.status || 'connected';
+    statusEl.classList.remove('hidden');
+
+    if (statusFlashTimeoutId) {
+      window.clearTimeout(statusFlashTimeoutId);
+    }
+
+    statusFlashTimeoutId = window.setTimeout(() => {
+      statusFlashTimeoutId = null;
+      if (statusRevision !== revisionAtFlash) return;
+      statusEl.className = statusState.status || 'connected';
+      statusText.textContent = statusState.text || '';
+    }, durationMs);
   }
 
   function setLauncherError(message) {
@@ -659,6 +751,10 @@
       selectedProject = '';
       localStorage.removeItem('terminal_project');
     }
+
+    const hasActiveProject = Boolean(selectedProject);
+    if (publishGithubBtn) publishGithubBtn.disabled = !hasActiveProject;
+    if (deleteProjectBtn) deleteProjectBtn.disabled = !hasActiveProject;
   }
 
   async function fetchProjects() {
@@ -1246,6 +1342,9 @@
       } else {
         localStorage.removeItem('terminal_project');
       }
+      const hasActiveProject = Boolean(selectedProject);
+      if (publishGithubBtn) publishGithubBtn.disabled = !hasActiveProject;
+      if (deleteProjectBtn) deleteProjectBtn.disabled = !hasActiveProject;
       fetchGitStatus();
       fetchGitRepo();
       fetchFiles();
@@ -1643,6 +1742,53 @@
     });
   }
 
+  if (deleteProjectBtn) {
+    deleteProjectBtn.addEventListener('click', async () => {
+      if (!selectedProject) {
+        setLauncherError('Select a project first.');
+        return;
+      }
+
+      const ok = window.confirm(
+        `Delete project "${selectedProject}"?\n\nThis permanently deletes all files in the project.`,
+      );
+      if (!ok) return;
+
+      setLauncherError(null);
+      setLauncherMessage(`Deleting ${selectedProject}…`);
+      deleteProjectBtn.disabled = true;
+
+      try {
+        const projectName = selectedProject;
+        const response = await apiFetch(
+          `/api/projects/${encodeURIComponent(projectName)}`,
+          { method: 'DELETE' },
+        );
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to delete project');
+        }
+
+        selectedProject = '';
+        localStorage.removeItem('terminal_project');
+        closeFileModal();
+        currentFilesDir = '';
+        currentFiles = [];
+        renderFilesList();
+
+        setLauncherMessage(`Deleted project: ${projectName}`);
+        fetchProjects();
+      } catch (err) {
+        console.error('Project delete error:', err);
+        setLauncherMessage(null);
+        setLauncherError(err.message || 'Failed to delete project');
+      } finally {
+        deleteProjectBtn.disabled = false;
+      }
+    });
+  }
+
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
       manuallyDisconnected = true;
@@ -1675,13 +1821,19 @@
   // Mobile toolbar buttons
   toolbar.addEventListener('click', (e) => {
     const button = e.target.closest('button');
-    if (!button || !ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!button) return;
 
     const action = button.dataset.action;
+    if (action === 'copy') {
+      handleCopyAction();
+      return;
+    }
     if (action === 'paste') {
       handlePasteAction();
       return;
     }
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
     const key = button.dataset.key;
     const ctrl = button.dataset.ctrl;

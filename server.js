@@ -528,6 +528,25 @@ app.post("/api/projects", requireSession, (req, res) => {
   res.status(201).json({ success: true, project: { name } });
 });
 
+// Delete a project directory (recursive)
+app.delete("/api/projects/:name", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  try {
+    await fs.promises.rm(projectPath, { recursive: true, force: true });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to delete project",
+    });
+  }
+});
+
 // List project files (directory contents)
 app.get("/api/projects/:name/files", requireSession, (req, res) => {
   const projectPath = getProjectPath(req.params.name);
