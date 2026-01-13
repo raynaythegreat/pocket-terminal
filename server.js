@@ -86,9 +86,9 @@ const CLI_TOOLS = {
     description: "Sign in with your xAI account",
   },
   copilot: {
-    name: "GitHub Copilot",
+    name: "Copilot",
     commands: ["copilot", "github-copilot-cli"],
-    description: "GitHub Copilot CLI (interactive)",
+    description: "Copilot CLI (interactive)",
   },
   bash: {
     name: "Bash Shell",

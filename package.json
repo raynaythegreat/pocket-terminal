@@ -10,6 +10,7 @@
   "dependencies": {
     "@anthropic-ai/claude-code": "latest",
     "@google/gemini-cli": "latest",
+    "@github/copilot": "0.0.380",
     "@openai/codex": "latest",
     "@vibe-kit/grok-cli": "latest",
     "dotenv": "^16.3.1",
