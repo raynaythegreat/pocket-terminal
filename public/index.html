@@ -55,33 +55,44 @@
     </div>
     <p id="launcher-message" class="message hidden"></p>
 
-    <div class="launcher-body">
-      <div class="launcher-sidebar">
-        <div class="project-section">
-          <div class="project-header">
-            <div class="project-header-left">
-              <span class="project-icon">📁</span>
-              <span class="project-header-title">Projects</span>
-            </div>
-            <div class="project-actions">
-              <button id="new-project-btn" class="action-btn" type="button" title="Create new project">
-                <span class="btn-icon">+</span>
-                <span class="btn-text">New</span>
-              </button>
-              <button id="publish-github-btn" class="action-btn github-btn" type="button" title="Publish to GitHub">
-                <span class="btn-icon">🚀</span>
-                <span class="btn-text">Publish</span>
-              </button>
-              <button id="delete-project-btn" class="action-btn danger-btn" type="button" title="Delete this project">
-                <span class="btn-icon">🗑️</span>
-                <span class="btn-text">Delete</span>
-              </button>
-            </div>
+    <!-- Project Section - Always visible at top -->
+    <div class="project-section-wrapper">
+      <div class="project-section">
+        <div class="project-row">
+          <div class="project-label">
+            <span class="project-icon">📁</span>
+            <span class="project-label-text">Project</span>
           </div>
           <div class="project-selector">
             <select id="project-select" class="project-select"></select>
           </div>
         </div>
+        <div class="project-actions-row">
+          <button id="new-project-btn" class="action-btn" type="button" title="Create new project">
+            <span class="btn-icon">+</span>
+            <span class="btn-text">New</span>
+          </button>
+          <button id="publish-github-btn" class="action-btn github-btn" type="button" title="Publish to GitHub">
+            <span class="btn-icon">🚀</span>
+            <span class="btn-text">Publish</span>
+          </button>
+          <button id="delete-project-btn" class="action-btn danger-btn" type="button" title="Delete this project">
+            <span class="btn-icon">🗑️</span>
+            <span class="btn-text">Delete</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabs for mobile -->
+    <div class="launcher-tabs" role="tablist" aria-label="Launcher views">
+      <button class="launcher-tab" type="button" data-launcher-tab="tools" aria-selected="true">🧩 Tools</button>
+      <button class="launcher-tab" type="button" data-launcher-tab="files" aria-selected="false">🗂️ Files</button>
+      <button class="launcher-tab" type="button" data-launcher-tab="git" aria-selected="false">📝 Git</button>
+    </div>
+
+    <div class="launcher-body">
+      <div class="launcher-sidebar">
 
         <div class="files-panel">
           <div class="files-header">
@@ -161,12 +172,6 @@
             <div class="git-status-empty">No changes</div>
           </div>
         </div>
-      </div>
-
-      <div class="launcher-tabs" role="tablist" aria-label="Launcher views">
-        <button class="launcher-tab" type="button" data-launcher-tab="tools" aria-selected="true">🧩 Tools</button>
-        <button class="launcher-tab" type="button" data-launcher-tab="files" aria-selected="false">🗂️ Files</button>
-        <button class="launcher-tab" type="button" data-launcher-tab="git" aria-selected="false">📝 Git</button>
       </div>
 
       <div class="launcher-main">
