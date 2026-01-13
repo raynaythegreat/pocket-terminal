@@ -81,6 +81,7 @@
   let reconnectTimeoutId = null;
   let listenersAttached = false;
   let manuallyDisconnected = false;
+  let terminalFontSize = null;
   const THEME_STORAGE_KEY = 'pocket_terminal_theme';
   const PROJECTS_CACHE_KEY = 'pocket_terminal_projects_cache';
   const LAUNCHER_TAB_STORAGE_KEY = 'pocket_terminal_launcher_tab';
@@ -202,6 +203,13 @@
       brightCyan: '#67e8f9',
       brightWhite: '#ffffff'
     };
+  }
+
+  function getTerminalFontSize() {
+    const width = typeof window !== 'undefined' ? window.innerWidth : 1024;
+    if (width <= 360) return 12;
+    if (width <= 420) return 13;
+    return 14;
   }
 
   function updateThemeToggleButtons(theme) {
@@ -925,9 +933,10 @@
       term.dispose();
     }
 
+    terminalFontSize = getTerminalFontSize();
     term = new Terminal({
       cursorBlink: true,
-      fontSize: 14,
+      fontSize: terminalFontSize,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: getXtermTheme(activeTheme),
       scrollback: 10000
@@ -956,6 +965,11 @@
 
   function handleResize() {
     if (fitAddon && term) {
+      const nextSize = getTerminalFontSize();
+      if (nextSize !== terminalFontSize) {
+        terminalFontSize = nextSize;
+        term.setOption('fontSize', terminalFontSize);
+      }
       fitAddon.fit();
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
