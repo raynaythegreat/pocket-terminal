@@ -117,6 +117,36 @@
             </div>
             <button id="refresh-git-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
           </div>
+          <div class="git-repo-actions">
+            <button id="git-clone-btn" class="action-btn" type="button" title="Clone a repository into a new project">
+              <span class="btn-icon">📥</span>
+              <span class="btn-text">Clone</span>
+            </button>
+            <button id="git-init-btn" class="action-btn" type="button" title="Initialize git in this project">
+              <span class="btn-icon">✨</span>
+              <span class="btn-text">Init</span>
+            </button>
+            <button id="git-remote-btn" class="action-btn" type="button" title="Set or update origin remote URL">
+              <span class="btn-icon">🔗</span>
+              <span class="btn-text">Remote</span>
+            </button>
+            <button id="git-pull-btn" class="action-btn" type="button" title="Pull latest changes">
+              <span class="btn-icon">⬇️</span>
+              <span class="btn-text">Pull</span>
+            </button>
+            <button id="git-push-btn" class="action-btn" type="button" title="Push commits">
+              <span class="btn-icon">⬆️</span>
+              <span class="btn-text">Push</span>
+            </button>
+          </div>
+          <div class="git-repo-meta">
+            <div class="git-repo-row">
+              <span class="git-repo-label">Origin</span>
+              <span id="git-origin-url" class="git-origin-url">—</span>
+              <button id="git-copy-origin-btn" class="icon-btn" type="button" title="Copy origin URL">📋</button>
+            </div>
+            <p id="git-repo-hint" class="git-repo-hint hidden"></p>
+          </div>
           <div id="git-status-content" class="git-status-content">
             <div class="git-status-empty">No changes</div>
           </div>

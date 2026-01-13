@@ -279,6 +279,63 @@ function isValidGitHubRepoSlug(value) {
   return repoOnly.test(trimmed) || ownerRepo.test(trimmed);
 }
 
+function isValidGitRemoteName(value) {
+  if (!value || typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(trimmed);
+}
+
+function isValidGitRemoteUrl(value) {
+  if (!value || typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes("\0")) return false;
+  if (/\s/.test(trimmed)) return false;
+  if (trimmed.startsWith("-")) return false;
+  if (trimmed.length > 2048) return false;
+
+  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed);
+  const isGitSsh = /^git@/i.test(trimmed);
+  return hasScheme || isGitSsh;
+}
+
+function trimOutput(value, maxChars = 8000) {
+  const text = typeof value === "string" ? value : "";
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars)}\n... (truncated ${text.length - maxChars} chars)`;
+}
+
+function deriveProjectNameFromRepo(repo) {
+  const raw = typeof repo === "string" ? repo.trim() : "";
+  if (!raw) return "";
+
+  let base = raw;
+
+  if (isValidGitHubRepoSlug(raw)) {
+    base = raw.includes("/") ? raw.split("/").pop() : raw;
+  } else if (raw.includes("://")) {
+    try {
+      const parsed = new URL(raw);
+      base = parsed.pathname.split("/").filter(Boolean).pop() || raw;
+    } catch {
+      // ignore
+    }
+  } else if (raw.startsWith("git@")) {
+    const afterColon = raw.includes(":") ? raw.split(":").slice(1).join(":") : raw;
+    base = afterColon.split("/").filter(Boolean).pop() || raw;
+  }
+
+  base = base.replace(/\.git$/i, "");
+  let cleaned = base.replace(/[^a-zA-Z0-9-_]+/g, "-").replace(/^-+/, "");
+  cleaned = cleaned.replace(/-+$/, "");
+  if (!cleaned) return "";
+
+  const truncated = cleaned.length > 64 ? cleaned.slice(0, 64) : cleaned;
+  const normalized = truncated.replace(/-+$/, "");
+  return isValidProjectName(normalized) ? normalized : "";
+}
+
 function getToolsEnv() {
   const homeDir = cliHomeDir || process.env.HOME || "/tmp";
   return {
@@ -664,6 +721,134 @@ app.put("/api/projects/:name/file", requireSession, (req, res) => {
   }
 });
 
+// Clone a repository into a new project directory
+app.post("/api/projects/clone", requireSession, async (req, res) => {
+  const repo = typeof req.body?.repo === "string" ? req.body.repo.trim() : "";
+  const requestedProjectName =
+    typeof req.body?.projectName === "string" ? req.body.projectName.trim() : "";
+
+  if (!repo) {
+    res.status(400).json({ success: false, error: "Repository is required." });
+    return;
+  }
+
+  const projectName = requestedProjectName || deriveProjectNameFromRepo(repo);
+  if (!isValidProjectName(projectName)) {
+    res.status(400).json({
+      success: false,
+      error: "Invalid project name (use letters, numbers, - or _).",
+    });
+    return;
+  }
+
+  const projectPath = path.join(projectsDir, projectName);
+  if (fs.existsSync(projectPath)) {
+    res.status(409).json({ success: false, error: "Project already exists" });
+    return;
+  }
+
+  const gitCommand = resolveCommand("git", enhancedPath);
+  if (!gitCommand) {
+    res.status(500).json({
+      success: false,
+      error: "git is not installed on this server.",
+    });
+    return;
+  }
+
+  const env = getToolsEnv();
+  const ghCommand = resolveCommand("gh", enhancedPath);
+
+  const looksLikeSlug = isValidGitHubRepoSlug(repo);
+  const slugHasOwner = looksLikeSlug && repo.includes("/");
+
+  let cloneResult = null;
+
+  if (looksLikeSlug && ghCommand) {
+    cloneResult = await runCommand(
+      ghCommand,
+      ["repo", "clone", repo, projectPath],
+      { cwd: projectsDir, env, timeoutMs: 180000 },
+    );
+  }
+
+  if (!cloneResult || cloneResult.code !== 0) {
+    if (looksLikeSlug && !slugHasOwner) {
+      if (!ghCommand) {
+        res.status(400).json({
+          success: false,
+          error: "Provide an owner/repo slug or a full git URL to clone.",
+        });
+        return;
+      }
+
+      try {
+        if (fs.existsSync(projectPath)) {
+          fs.rmSync(projectPath, { recursive: true, force: true });
+        }
+      } catch {
+        // ignore
+      }
+
+      res.status(500).json({
+        success: false,
+        error:
+          trimOutput(cloneResult?.stderr) ||
+          trimOutput(cloneResult?.stdout) ||
+          "GitHub CLI clone failed. Provide owner/repo or a full git URL to clone.",
+      });
+      return;
+    }
+
+    try {
+      if (fs.existsSync(projectPath)) {
+        fs.rmSync(projectPath, { recursive: true, force: true });
+      }
+    } catch {
+      // ignore
+    }
+
+    let cloneSource = repo;
+    if (looksLikeSlug && slugHasOwner) {
+      const normalizedSlug = repo.replace(/\.git$/i, "");
+      cloneSource = `https://github.com/${normalizedSlug}.git`;
+    } else if (!looksLikeSlug && !isValidGitRemoteUrl(repo) && !repo.includes("://")) {
+      res.status(400).json({
+        success: false,
+        error: "Provide a valid GitHub slug (owner/repo) or a full git URL to clone.",
+      });
+      return;
+    }
+
+    cloneResult = await runCommand(
+      gitCommand,
+      ["clone", cloneSource, projectPath],
+      { cwd: projectsDir, env, timeoutMs: 180000 },
+    );
+  }
+
+  if (cloneResult.code !== 0) {
+    try {
+      if (fs.existsSync(projectPath)) {
+        fs.rmSync(projectPath, { recursive: true, force: true });
+      }
+    } catch {
+      // ignore
+    }
+
+    res.status(500).json({
+      success: false,
+      error:
+        trimOutput(cloneResult.stderr) ||
+        trimOutput(cloneResult.stdout) ||
+        "git clone failed",
+    });
+    return;
+  }
+
+  res.status(201).json({ success: true, project: { name: projectName } });
+});
+
 // Publish a project to a new GitHub repo
 app.post("/api/projects/:name/publish/github", requireSession, async (req, res) => {
   const projectPath = getProjectPath(req.params.name);
@@ -863,6 +1048,421 @@ app.post("/api/projects/:name/publish/github", requireSession, async (req, res) 
     res.status(500).json({
       success: false,
       error: err?.message || "Failed to publish project",
+    });
+  }
+});
+
+// Get git repository info (remotes, branch)
+app.get("/api/projects/:name/git-repo", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const gitCommand = resolveCommand("git", enhancedPath);
+  if (!gitCommand) {
+    res.status(500).json({
+      success: false,
+      error: "git is not installed on this server.",
+    });
+    return;
+  }
+
+  const env = getToolsEnv();
+
+  try {
+    const isGitRepo = await runCommand(
+      gitCommand,
+      ["rev-parse", "--git-dir"],
+      { cwd: projectPath, env, timeoutMs: 5000 },
+    );
+
+    if (isGitRepo.code !== 0) {
+      res.json({
+        success: true,
+        isGitRepo: false,
+        branch: null,
+        originUrl: "",
+        remotes: [],
+      });
+      return;
+    }
+
+    const [branch, remoteList] = await Promise.all([
+      runCommand(gitCommand, ["rev-parse", "--abbrev-ref", "HEAD"], {
+        cwd: projectPath,
+        env,
+        timeoutMs: 5000,
+      }),
+      runCommand(gitCommand, ["remote", "-v"], {
+        cwd: projectPath,
+        env,
+        timeoutMs: 5000,
+      }),
+    ]);
+
+    const remotesMap = new Map();
+    const lines = String(remoteList.stdout || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    for (const line of lines) {
+      const match = line.match(/^(\S+)\s+(\S+)\s+\((fetch|push)\)$/);
+      if (!match) continue;
+      const [, name, url, type] = match;
+      const current = remotesMap.get(name) || { name, fetchUrl: "", pushUrl: "" };
+      if (type === "fetch") current.fetchUrl = url;
+      if (type === "push") current.pushUrl = url;
+      remotesMap.set(name, current);
+    }
+
+    const remotes = Array.from(remotesMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+    const origin = remotes.find((remote) => remote.name === "origin");
+    const originUrl = origin?.fetchUrl || origin?.pushUrl || "";
+
+    res.json({
+      success: true,
+      isGitRepo: true,
+      branch: branch.code === 0 ? branch.stdout.trim() : null,
+      originUrl,
+      remotes,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to get git repository info",
+    });
+  }
+});
+
+// Initialize a git repository for a project
+app.post("/api/projects/:name/git-init", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const gitCommand = resolveCommand("git", enhancedPath);
+  if (!gitCommand) {
+    res.status(500).json({
+      success: false,
+      error: "git is not installed on this server.",
+    });
+    return;
+  }
+
+  const env = getToolsEnv();
+
+  try {
+    const isGitRepo = await runCommand(
+      gitCommand,
+      ["rev-parse", "--git-dir"],
+      { cwd: projectPath, env, timeoutMs: 5000 },
+    );
+
+    if (isGitRepo.code === 0) {
+      res.json({ success: true, initialized: false });
+      return;
+    }
+
+    ensureProjectGitIgnore(projectPath);
+
+    let init = await runCommand(gitCommand, ["init", "-b", "main"], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 15000,
+    });
+
+    if (init.code !== 0) {
+      init = await runCommand(gitCommand, ["init"], {
+        cwd: projectPath,
+        env,
+        timeoutMs: 15000,
+      });
+    }
+
+    if (init.code !== 0) {
+      res.status(500).json({
+        success: false,
+        error: trimOutput(init.stderr) || trimOutput(init.stdout) || "git init failed",
+      });
+      return;
+    }
+
+    res.json({ success: true, initialized: true });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to initialize git repository",
+    });
+  }
+});
+
+// Add or update a git remote (default: origin)
+app.post("/api/projects/:name/git-remote", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const remoteNameRaw =
+    typeof req.body?.name === "string" ? req.body.name.trim() : "origin";
+  const remoteName = remoteNameRaw || "origin";
+  const remoteUrl =
+    typeof req.body?.url === "string" ? req.body.url.trim() : "";
+
+  if (!isValidGitRemoteName(remoteName)) {
+    res.status(400).json({ success: false, error: "Invalid remote name." });
+    return;
+  }
+
+  if (!isValidGitRemoteUrl(remoteUrl)) {
+    res.status(400).json({
+      success: false,
+      error: "Provide a valid git remote URL (https://... or git@...).",
+    });
+    return;
+  }
+
+  const gitCommand = resolveCommand("git", enhancedPath);
+  if (!gitCommand) {
+    res.status(500).json({
+      success: false,
+      error: "git is not installed on this server.",
+    });
+    return;
+  }
+
+  const env = getToolsEnv();
+
+  try {
+    const isGitRepo = await runCommand(gitCommand, ["rev-parse", "--git-dir"], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 5000,
+    });
+
+    if (isGitRepo.code !== 0) {
+      ensureProjectGitIgnore(projectPath);
+      let init = await runCommand(gitCommand, ["init", "-b", "main"], {
+        cwd: projectPath,
+        env,
+        timeoutMs: 15000,
+      });
+      if (init.code !== 0) {
+        init = await runCommand(gitCommand, ["init"], {
+          cwd: projectPath,
+          env,
+          timeoutMs: 15000,
+        });
+      }
+      if (init.code !== 0) {
+        res.status(500).json({
+          success: false,
+          error: trimOutput(init.stderr) || trimOutput(init.stdout) || "git init failed",
+        });
+        return;
+      }
+    }
+
+    const existing = await runCommand(gitCommand, ["remote", "get-url", remoteName], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 5000,
+    });
+
+    const args =
+      existing.code === 0
+        ? ["remote", "set-url", remoteName, remoteUrl]
+        : ["remote", "add", remoteName, remoteUrl];
+
+    const update = await runCommand(gitCommand, args, {
+      cwd: projectPath,
+      env,
+      timeoutMs: 15000,
+    });
+
+    if (update.code !== 0) {
+      res.status(500).json({
+        success: false,
+        error:
+          trimOutput(update.stderr) ||
+          trimOutput(update.stdout) ||
+          "git remote update failed",
+      });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to update git remote",
+    });
+  }
+});
+
+// Pull latest changes for the active branch
+app.post("/api/projects/:name/git-pull", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const gitCommand = resolveCommand("git", enhancedPath);
+  if (!gitCommand) {
+    res.status(500).json({
+      success: false,
+      error: "git is not installed on this server.",
+    });
+    return;
+  }
+
+  const env = getToolsEnv();
+
+  try {
+    const isGitRepo = await runCommand(gitCommand, ["rev-parse", "--git-dir"], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 5000,
+    });
+
+    if (isGitRepo.code !== 0) {
+      res.status(400).json({ success: false, error: "Not a git repository." });
+      return;
+    }
+
+    const pull = await runCommand(gitCommand, ["pull", "--rebase"], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 180000,
+    });
+
+    if (pull.timedOut) {
+      res.status(504).json({ success: false, error: "git pull timed out" });
+      return;
+    }
+
+    if (pull.code !== 0) {
+      res.status(500).json({
+        success: false,
+        error: trimOutput(pull.stderr) || trimOutput(pull.stdout) || "git pull failed",
+      });
+      return;
+    }
+
+    res.json({ success: true, stdout: trimOutput(pull.stdout) });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to pull repository",
+    });
+  }
+});
+
+// Push local commits (auto-set upstream when missing)
+app.post("/api/projects/:name/git-push", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const gitCommand = resolveCommand("git", enhancedPath);
+  if (!gitCommand) {
+    res.status(500).json({
+      success: false,
+      error: "git is not installed on this server.",
+    });
+    return;
+  }
+
+  const env = getToolsEnv();
+
+  try {
+    const isGitRepo = await runCommand(gitCommand, ["rev-parse", "--git-dir"], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 5000,
+    });
+
+    if (isGitRepo.code !== 0) {
+      res.status(400).json({ success: false, error: "Not a git repository." });
+      return;
+    }
+
+    const remoteList = await runCommand(gitCommand, ["remote"], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 5000,
+    });
+
+    const remotes = String(remoteList.stdout || "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (!remotes.length) {
+      res.status(400).json({
+        success: false,
+        error: "No git remotes configured. Set a remote first.",
+      });
+      return;
+    }
+
+    const branch = await runCommand(gitCommand, ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 5000,
+    });
+    const branchName = branch.code === 0 ? branch.stdout.trim() : "";
+
+    let push = await runCommand(gitCommand, ["push"], {
+      cwd: projectPath,
+      env,
+      timeoutMs: 180000,
+    });
+
+    const needsUpstream =
+      push.code !== 0 &&
+      /(set-?upstream|no upstream branch|has no upstream)/i.test(
+        `${push.stderr}\n${push.stdout}`,
+      );
+
+    if (needsUpstream && branchName && branchName !== "HEAD") {
+      const remoteName = remotes.includes("origin") ? "origin" : remotes[0];
+      push = await runCommand(gitCommand, ["push", "-u", remoteName, branchName], {
+        cwd: projectPath,
+        env,
+        timeoutMs: 180000,
+      });
+    }
+
+    if (push.timedOut) {
+      res.status(504).json({ success: false, error: "git push timed out" });
+      return;
+    }
+
+    if (push.code !== 0) {
+      res.status(500).json({
+        success: false,
+        error: trimOutput(push.stderr) || trimOutput(push.stdout) || "git push failed",
+      });
+      return;
+    }
+
+    res.json({ success: true, stdout: trimOutput(push.stdout) });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to push repository",
     });
   }
 });

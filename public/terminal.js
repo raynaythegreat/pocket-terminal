@@ -19,6 +19,14 @@
   const gitCommitCount = document.getElementById('git-commit-count');
   const gitStatusContent = document.getElementById('git-status-content');
   const refreshGitBtn = document.getElementById('refresh-git-btn');
+  const gitCloneBtn = document.getElementById('git-clone-btn');
+  const gitInitBtn = document.getElementById('git-init-btn');
+  const gitRemoteBtn = document.getElementById('git-remote-btn');
+  const gitPullBtn = document.getElementById('git-pull-btn');
+  const gitPushBtn = document.getElementById('git-push-btn');
+  const gitOriginUrl = document.getElementById('git-origin-url');
+  const gitCopyOriginBtn = document.getElementById('git-copy-origin-btn');
+  const gitRepoHint = document.getElementById('git-repo-hint');
   const terminalContainer = document.getElementById('terminal-container');
   const currentCliLabel = document.getElementById('current-cli');
   const exitBtn = document.getElementById('exit-btn');
@@ -660,6 +668,7 @@
       saveCachedProjects(projects);
       renderProjectPicker();
       fetchGitStatus();
+      fetchGitRepo();
       fetchFiles();
     } catch (err) {
       console.error('Failed to fetch projects:', err);
@@ -668,11 +677,122 @@
         projects = cached;
         renderProjectPicker();
         setLauncherError('Could not refresh projects (showing cached list).');
+        fetchGitStatus();
+        fetchGitRepo();
+        fetchFiles();
       } else {
         projects = [];
         projectSelect.innerHTML = '<option value="">Projects (root)</option>';
         setLauncherError('Could not load projects.');
       }
+    }
+  }
+
+  function setGitRepoHint(message) {
+    if (!gitRepoHint) return;
+    if (!message) {
+      gitRepoHint.textContent = '';
+      gitRepoHint.classList.add('hidden');
+      return;
+    }
+    gitRepoHint.textContent = message;
+    gitRepoHint.classList.remove('hidden');
+  }
+
+  function setGitOriginUrl(url) {
+    if (!gitOriginUrl) return;
+    const normalized = typeof url === 'string' ? url.trim() : '';
+    gitOriginUrl.textContent = normalized || '—';
+    gitOriginUrl.title = normalized || '';
+    if (gitCopyOriginBtn) gitCopyOriginBtn.disabled = !normalized;
+  }
+
+  function updateGitRepoControls({ hasProject, isGitRepo, originUrl } = {}) {
+    const canManage = Boolean(hasProject);
+    const isRepo = Boolean(isGitRepo);
+    const hasOrigin = Boolean(originUrl);
+
+    if (gitInitBtn) gitInitBtn.disabled = !canManage || isRepo;
+    if (gitRemoteBtn) gitRemoteBtn.disabled = !canManage;
+
+    const canSync = canManage && isRepo && hasOrigin;
+    if (gitPullBtn) gitPullBtn.disabled = !canSync;
+    if (gitPushBtn) gitPushBtn.disabled = !canSync;
+  }
+
+  function deriveProjectNameFromRepoInput(repo) {
+    const raw = String(repo || '').trim();
+    if (!raw) return '';
+
+    let base = raw;
+
+    const looksLikeSlug =
+      /^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(raw) ||
+      /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(raw);
+
+    if (looksLikeSlug) {
+      base = raw.includes('/') ? raw.split('/').pop() : raw;
+    } else if (raw.includes('://')) {
+      try {
+        const parsed = new URL(raw);
+        base = parsed.pathname.split('/').filter(Boolean).pop() || raw;
+      } catch {
+        // ignore
+      }
+    } else if (raw.startsWith('git@')) {
+      const afterColon = raw.includes(':') ? raw.split(':').slice(1).join(':') : raw;
+      base = afterColon.split('/').filter(Boolean).pop() || raw;
+    }
+
+    base = base.replace(/\.git$/i, '');
+    let cleaned = base.replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+/, '').replace(/-+$/, '');
+    if (!cleaned) return '';
+    if (cleaned.length > 64) cleaned = cleaned.slice(0, 64).replace(/-+$/, '');
+    return cleaned;
+  }
+
+  async function fetchGitRepo() {
+    if (!gitStatusPanel) return;
+
+    gitStatusPanel.classList.remove('hidden');
+
+    if (!selectedProject) {
+      if (gitBranchName) gitBranchName.textContent = '—';
+      if (gitCommitCount) gitCommitCount.textContent = '';
+      setGitOriginUrl('');
+      setGitRepoHint('Select a project, or Clone a repo to create one.');
+      updateGitRepoControls({ hasProject: false, isGitRepo: false, originUrl: '' });
+      return;
+    }
+
+    setGitRepoHint(null);
+
+    try {
+      const response = await apiFetch(`/api/projects/${encodeURIComponent(selectedProject)}/git-repo`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+
+      if (!data.isGitRepo) {
+        setGitOriginUrl('');
+        setGitRepoHint('Not a git repository. Use Init to start, or Clone a repo.');
+        updateGitRepoControls({ hasProject: true, isGitRepo: false, originUrl: '' });
+        return;
+      }
+
+      const originUrl = typeof data.originUrl === 'string' ? data.originUrl : '';
+      if (gitBranchName && data.branch) gitBranchName.textContent = data.branch;
+      setGitOriginUrl(originUrl);
+      updateGitRepoControls({ hasProject: true, isGitRepo: true, originUrl });
+      if (!originUrl) {
+        setGitRepoHint('No origin remote set. Use Remote to add one.');
+      }
+    } catch (err) {
+      console.error('Failed to fetch git repo:', err);
+      setGitOriginUrl('');
+      setGitRepoHint('Failed to load repository info.');
+      updateGitRepoControls({ hasProject: Boolean(selectedProject), isGitRepo: false, originUrl: '' });
     }
   }
 
@@ -1113,6 +1233,7 @@
         localStorage.removeItem('terminal_project');
       }
       fetchGitStatus();
+      fetchGitRepo();
       fetchFiles();
       closeFileModal();
       if (filesFilter) filesFilter.value = '';
@@ -1122,6 +1243,225 @@
   if (refreshGitBtn) {
     refreshGitBtn.addEventListener('click', () => {
       fetchGitStatus();
+      fetchGitRepo();
+    });
+  }
+
+  if (gitCloneBtn) {
+    gitCloneBtn.addEventListener('click', async () => {
+      const repoInput = window.prompt('Repository to clone (owner/repo or full URL):');
+      if (repoInput === null) return;
+      const repo = String(repoInput).trim();
+      if (!repo) return;
+
+      const suggestedProjectName = deriveProjectNameFromRepoInput(repo);
+      const projectNameInput = window.prompt(
+        'Project name (optional):',
+        suggestedProjectName,
+      );
+      if (projectNameInput === null) return;
+
+      const projectName = String(projectNameInput || '').trim();
+
+      setLauncherError(null);
+      setLauncherMessage('Cloning repository…');
+      gitCloneBtn.disabled = true;
+
+      try {
+        const body = { repo };
+        if (projectName) body.projectName = projectName;
+
+        const response = await apiFetch('/api/projects/clone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to clone repository');
+        }
+
+        selectedProject = data.project?.name || '';
+        if (selectedProject) {
+          localStorage.setItem('terminal_project', selectedProject);
+        }
+
+        setLauncherMessage(
+          selectedProject ? `Cloned into project: ${selectedProject}` : 'Repository cloned.',
+        );
+
+        await fetchProjects();
+      } catch (err) {
+        console.error('Clone error:', err);
+        setLauncherMessage(null);
+        setLauncherError(err.message || 'Failed to clone repository');
+      } finally {
+        gitCloneBtn.disabled = false;
+      }
+    });
+  }
+
+  if (gitInitBtn) {
+    gitInitBtn.addEventListener('click', async () => {
+      if (!selectedProject) {
+        setLauncherError('Select a project first.');
+        return;
+      }
+
+      setLauncherError(null);
+      setLauncherMessage('Initializing git repository…');
+      gitInitBtn.disabled = true;
+
+      try {
+        const response = await apiFetch(
+          `/api/projects/${encodeURIComponent(selectedProject)}/git-init`,
+          { method: 'POST' },
+        );
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to initialize repository');
+        }
+
+        setLauncherMessage(data.initialized ? 'Git repository initialized.' : 'Already a git repository.');
+        fetchGitStatus();
+        fetchGitRepo();
+      } catch (err) {
+        console.error('Git init error:', err);
+        setLauncherMessage(null);
+        setLauncherError(err.message || 'Failed to initialize repository');
+      } finally {
+        gitInitBtn.disabled = false;
+      }
+    });
+  }
+
+  if (gitRemoteBtn) {
+    gitRemoteBtn.addEventListener('click', async () => {
+      if (!selectedProject) {
+        setLauncherError('Select a project first.');
+        return;
+      }
+
+      const currentOrigin =
+        gitOriginUrl && gitOriginUrl.textContent !== '—' ? gitOriginUrl.textContent : '';
+
+      const urlInput = window.prompt(
+        'Origin remote URL (https://... or git@...):',
+        currentOrigin,
+      );
+      if (urlInput === null) return;
+      const url = String(urlInput).trim();
+      if (!url) return;
+
+      setLauncherError(null);
+      setLauncherMessage('Updating remote…');
+      gitRemoteBtn.disabled = true;
+
+      try {
+        const response = await apiFetch(
+          `/api/projects/${encodeURIComponent(selectedProject)}/git-remote`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: 'origin', url }),
+          },
+        );
+
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to update remote');
+        }
+
+        setLauncherMessage('Remote updated.');
+        fetchGitRepo();
+      } catch (err) {
+        console.error('Remote update error:', err);
+        setLauncherMessage(null);
+        setLauncherError(err.message || 'Failed to update remote');
+      } finally {
+        gitRemoteBtn.disabled = false;
+      }
+    });
+  }
+
+  if (gitPullBtn) {
+    gitPullBtn.addEventListener('click', async () => {
+      if (!selectedProject) {
+        setLauncherError('Select a project first.');
+        return;
+      }
+
+      setLauncherError(null);
+      setLauncherMessage('Pulling changes…');
+      gitPullBtn.disabled = true;
+
+      try {
+        const response = await apiFetch(
+          `/api/projects/${encodeURIComponent(selectedProject)}/git-pull`,
+          { method: 'POST' },
+        );
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to pull changes');
+        }
+
+        const message = data.stdout ? `Pull complete.\n\n${data.stdout}` : 'Pull complete.';
+        setLauncherMessage(message);
+        fetchGitStatus();
+        fetchGitRepo();
+        fetchFiles(currentFilesDir);
+      } catch (err) {
+        console.error('Pull error:', err);
+        setLauncherMessage(null);
+        setLauncherError(err.message || 'Failed to pull changes');
+      } finally {
+        gitPullBtn.disabled = false;
+      }
+    });
+  }
+
+  if (gitPushBtn) {
+    gitPushBtn.addEventListener('click', async () => {
+      if (!selectedProject) {
+        setLauncherError('Select a project first.');
+        return;
+      }
+
+      setLauncherError(null);
+      setLauncherMessage('Pushing commits…');
+      gitPushBtn.disabled = true;
+
+      try {
+        const response = await apiFetch(
+          `/api/projects/${encodeURIComponent(selectedProject)}/git-push`,
+          { method: 'POST' },
+        );
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || 'Failed to push commits');
+        }
+
+        const message = data.stdout ? `Push complete.\n\n${data.stdout}` : 'Push complete.';
+        setLauncherMessage(message);
+        fetchGitStatus();
+        fetchGitRepo();
+      } catch (err) {
+        console.error('Push error:', err);
+        setLauncherMessage(null);
+        setLauncherError(err.message || 'Failed to push commits');
+      } finally {
+        gitPushBtn.disabled = false;
+      }
+    });
+  }
+
+  if (gitCopyOriginBtn) {
+    gitCopyOriginBtn.addEventListener('click', async () => {
+      const url =
+        gitOriginUrl && gitOriginUrl.textContent !== '—' ? gitOriginUrl.textContent : '';
+      if (!url) return;
+      await copyToClipboard(url);
     });
   }
 
