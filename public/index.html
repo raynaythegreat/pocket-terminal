@@ -221,6 +221,80 @@
     </div>
   </div>
 
+  <!-- GitHub Deploy Modal -->
+  <div id="github-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Deploy to GitHub">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">Deploy to GitHub</div>
+        <button id="github-modal-close" class="icon-btn" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="github-modal-body">
+        <div class="github-tabs" role="tablist" aria-label="GitHub deploy mode">
+          <button class="github-tab active" type="button" data-github-mode="create" aria-selected="true">New repo</button>
+          <button class="github-tab" type="button" data-github-mode="existing" aria-selected="false">Existing repo</button>
+        </div>
+
+        <div class="github-modal-content">
+          <div class="github-panel" data-github-panel="create">
+            <div class="github-field">
+              <label for="github-repo-name">Repo name</label>
+              <input id="github-repo-name" type="text" placeholder="my-project" autocomplete="off">
+            </div>
+            <div class="github-field">
+              <label for="github-visibility">Visibility</label>
+              <select id="github-visibility">
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="github-panel hidden" data-github-panel="existing">
+            <div class="github-search-row">
+              <input id="github-repo-search" type="text" placeholder="Search repos…" autocomplete="off">
+              <button id="github-repo-refresh" class="icon-btn" type="button" title="Refresh">🔄</button>
+            </div>
+            <div id="github-repo-list" class="github-repo-list">
+              <div class="github-repo-empty">Loading…</div>
+            </div>
+            <div class="github-repo-footer">
+              <button id="github-repo-more" class="secondary-btn" type="button">Load more</button>
+              <div class="github-manual-row">
+                <div class="github-manual-label">Or type owner/repo</div>
+                <input id="github-repo-fullname" type="text" placeholder="owner/repo" autocomplete="off">
+              </div>
+            </div>
+          </div>
+
+          <div class="github-common-panel">
+            <div class="github-field">
+              <label for="github-branch">Branch (optional)</label>
+              <input id="github-branch" type="text" placeholder="main" autocomplete="off">
+            </div>
+            <div class="github-field">
+              <label for="github-commit-message">Commit message (optional)</label>
+              <input id="github-commit-message" type="text" placeholder="Deploy via Pocket Terminal" autocomplete="off">
+            </div>
+          </div>
+
+          <p id="github-modal-error" class="error hidden"></p>
+          <p id="github-modal-message" class="message hidden"></p>
+
+          <div class="github-modal-actions">
+            <button id="github-deploy-btn" class="action-btn github-btn" type="button">
+              <span class="btn-icon">🚀</span>
+              <span class="btn-text">Deploy</span>
+            </button>
+            <button id="github-cancel-btn" class="secondary-btn" type="button">Cancel</button>
+          </div>
+          <p class="github-warning">
+            Deploying to an existing repo overwrites files on that branch.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>

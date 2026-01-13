@@ -90,11 +90,6 @@ const CLI_TOOLS = {
     commands: ["copilot", "github-copilot-cli"],
     description: "GitHub Copilot CLI (interactive)",
   },
-  github: {
-    name: "GitHub CLI",
-    command: "gh",
-    description: "Manage repos, PRs, issues & more",
-  },
   bash: {
     name: "Bash Shell",
     command: "bash",
@@ -108,6 +103,9 @@ const terminals = new Map();
 
 const MAX_PROJECT_FILE_BYTES = 512 * 1024; // 512KB
 const MAX_PROJECT_DIR_ENTRIES = 2000;
+const MAX_GITHUB_DEPLOY_FILES = 2000;
+const MAX_GITHUB_DEPLOY_TOTAL_BYTES = 25 * 1024 * 1024; // 25MB
+const MAX_GITHUB_DEPLOY_FILE_BYTES = 5 * 1024 * 1024; // 5MB
 
 function generateToken() {
   return crypto.randomBytes(32).toString("hex");
@@ -336,6 +334,103 @@ function deriveProjectNameFromRepo(repo) {
   return isValidProjectName(normalized) ? normalized : "";
 }
 
+function getGitHubToken() {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  return typeof token === "string" ? token.trim() : "";
+}
+
+function normalizeGitHubVisibility(value) {
+  return value === "private" ? "private" : "public";
+}
+
+function isValidGitHubRepoName(value) {
+  if (!value || typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed.includes("/")) return false;
+  // GitHub is permissive, but keep it sane for URLs.
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(trimmed);
+}
+
+async function githubApiRequest(pathname, { method = "GET", token, body } = {}) {
+  const authToken = typeof token === "string" ? token.trim() : "";
+  if (!authToken) {
+    throw new Error("Missing GitHub token (set GH_TOKEN or GITHUB_TOKEN).");
+  }
+
+  const url = `https://api.github.com${pathname}`;
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "pocket-terminal",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  let bodyJson = undefined;
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    bodyJson = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: bodyJson,
+  });
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof data?.message === "string"
+        ? data.message
+        : typeof data === "string" && data.trim()
+          ? data.trim()
+          : `GitHub API request failed (HTTP ${response.status})`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.details = data;
+    throw error;
+  }
+
+  return data;
+}
+
+async function githubListRepos(token, { perPage = 100, page = 1 } = {}) {
+  const per_page = Math.max(1, Math.min(100, Number(perPage) || 100));
+  const pageNum = Math.max(1, Number(page) || 1);
+  const qs = new URLSearchParams({
+    per_page: String(per_page),
+    page: String(pageNum),
+    sort: "updated",
+    direction: "desc",
+    affiliation: "owner,collaborator,organization_member",
+  });
+
+  const data = await githubApiRequest(`/user/repos?${qs.toString()}`, {
+    token,
+  });
+
+  const repos = Array.isArray(data) ? data : [];
+  return repos.map((repo) => ({
+    id: repo?.id,
+    fullName: repo?.full_name,
+    private: Boolean(repo?.private),
+    url: repo?.html_url,
+    defaultBranch: repo?.default_branch,
+    updatedAt: repo?.updated_at,
+  }));
+}
+
 function getToolsEnv() {
   const homeDir = cliHomeDir || process.env.HOME || "/tmp";
   return {
@@ -456,6 +551,328 @@ function ensureProjectGitIgnore(projectPath) {
   }
 }
 
+const GITHUB_DEPLOY_IGNORE_DIRS = new Set([".git", "node_modules"]);
+const GITHUB_DEPLOY_IGNORE_FILES = new Set([".env", ".DS_Store"]);
+
+function isValidGitBranchName(value) {
+  if (!value || typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed.length > 200) return false;
+  if (trimmed.startsWith("-") || trimmed.startsWith("/") || trimmed.endsWith("/")) return false;
+  if (trimmed.includes("..") || trimmed.includes("//")) return false;
+  if (trimmed.includes("\0")) return false;
+  return /^[A-Za-z0-9._/-]+$/.test(trimmed);
+}
+
+async function mapLimit(items, limit, iterator) {
+  const list = Array.isArray(items) ? items : [];
+  const concurrency = Math.max(1, Math.min(Number(limit) || 1, list.length || 1));
+  const results = new Array(list.length);
+  let index = 0;
+
+  const workers = Array.from({ length: concurrency }).map(async () => {
+    while (true) {
+      const current = index;
+      index += 1;
+      if (current >= list.length) return;
+      results[current] = await iterator(list[current], current);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
+function collectProjectFilesForGitHubDeploy(projectPath) {
+  const files = [];
+  const skipped = [];
+  let totalBytes = 0;
+
+  const stack = [{ abs: projectPath, rel: "" }];
+
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current) break;
+
+    let entries = [];
+    try {
+      entries = fs.readdirSync(current.abs, { withFileTypes: true });
+    } catch (err) {
+      skipped.push({ path: current.rel || ".", reason: "unreadable-directory" });
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (entry.isSymbolicLink()) continue;
+
+      const name = entry.name;
+      const relPath = current.rel ? `${current.rel}/${name}` : name;
+      const absPath = path.join(current.abs, name);
+
+      if (entry.isDirectory()) {
+        if (GITHUB_DEPLOY_IGNORE_DIRS.has(name)) continue;
+        stack.push({ abs: absPath, rel: relPath });
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      if (GITHUB_DEPLOY_IGNORE_FILES.has(name)) continue;
+
+      let stat;
+      try {
+        stat = fs.statSync(absPath);
+      } catch {
+        skipped.push({ path: relPath, reason: "unreadable-file" });
+        continue;
+      }
+
+      if (stat.size > MAX_GITHUB_DEPLOY_FILE_BYTES) {
+        skipped.push({ path: relPath, reason: "file-too-large" });
+        continue;
+      }
+
+      totalBytes += stat.size;
+      if (totalBytes > MAX_GITHUB_DEPLOY_TOTAL_BYTES) {
+        skipped.push({ path: relPath, reason: "total-size-limit" });
+        continue;
+      }
+
+      if (files.length >= MAX_GITHUB_DEPLOY_FILES) {
+        skipped.push({ path: relPath, reason: "file-count-limit" });
+        continue;
+      }
+
+      const executable = (stat.mode & 0o111) !== 0;
+      files.push({
+        path: relPath,
+        absPath,
+        mode: executable ? "100755" : "100644",
+        size: stat.size,
+      });
+    }
+  }
+
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  return { files, totalBytes, skipped };
+}
+
+async function githubDeployProjectToRepo({
+  token,
+  owner,
+  repo,
+  branch,
+  message,
+  projectPath,
+}) {
+  const normalizedOwner = String(owner || "").trim();
+  const normalizedRepo = String(repo || "").trim();
+  const normalizedBranch = String(branch || "").trim() || "main";
+  const commitMessage = String(message || "").trim() || "Deploy via Pocket Terminal";
+
+  if (!normalizedOwner || !normalizedRepo) {
+    throw new Error("Missing GitHub owner/repo.");
+  }
+  if (!isValidGitBranchName(normalizedBranch)) {
+    throw new Error("Invalid branch name.");
+  }
+
+  const { files, totalBytes, skipped } = collectProjectFilesForGitHubDeploy(
+    projectPath,
+  );
+
+  const blobs = await mapLimit(files, 4, async (file) => {
+    const buffer = fs.readFileSync(file.absPath);
+    const blob = await githubApiRequest(
+      `/repos/${normalizedOwner}/${normalizedRepo}/git/blobs`,
+      {
+        method: "POST",
+        token,
+        body: {
+          content: buffer.toString("base64"),
+          encoding: "base64",
+        },
+      },
+    );
+
+    return {
+      path: file.path,
+      mode: file.mode,
+      sha: blob?.sha,
+      size: file.size,
+    };
+  });
+
+  const treeItems = blobs
+    .filter((item) => typeof item?.sha === "string" && item.sha.trim())
+    .map((item) => ({
+      path: item.path,
+      mode: item.mode,
+      type: "blob",
+      sha: item.sha,
+    }));
+
+  const tree = await githubApiRequest(
+    `/repos/${normalizedOwner}/${normalizedRepo}/git/trees`,
+    {
+      method: "POST",
+      token,
+      body: { tree: treeItems },
+    },
+  );
+
+  const treeSha = typeof tree?.sha === "string" ? tree.sha : "";
+  if (!treeSha) {
+    throw new Error("Failed to create Git tree.");
+  }
+
+  let parentSha = null;
+  let branchExists = false;
+
+  try {
+    const ref = await githubApiRequest(
+      `/repos/${normalizedOwner}/${normalizedRepo}/git/ref/heads/${normalizedBranch}`,
+      { token },
+    );
+    if (typeof ref?.object?.sha === "string" && ref.object.sha.trim()) {
+      parentSha = ref.object.sha.trim();
+      branchExists = true;
+    }
+  } catch (err) {
+    if (err?.status !== 404) throw err;
+  }
+
+  const commitBody = parentSha
+    ? { message: commitMessage, tree: treeSha, parents: [parentSha] }
+    : { message: commitMessage, tree: treeSha };
+
+  const commit = await githubApiRequest(
+    `/repos/${normalizedOwner}/${normalizedRepo}/git/commits`,
+    {
+      method: "POST",
+      token,
+      body: commitBody,
+    },
+  );
+
+  const commitSha = typeof commit?.sha === "string" ? commit.sha : "";
+  if (!commitSha) {
+    throw new Error("Failed to create commit.");
+  }
+
+  if (branchExists) {
+    await githubApiRequest(
+      `/repos/${normalizedOwner}/${normalizedRepo}/git/refs/heads/${normalizedBranch}`,
+      {
+        method: "PATCH",
+        token,
+        body: { sha: commitSha, force: false },
+      },
+    );
+  } else {
+    await githubApiRequest(`/repos/${normalizedOwner}/${normalizedRepo}/git/refs`, {
+      method: "POST",
+      token,
+      body: { ref: `refs/heads/${normalizedBranch}`, sha: commitSha },
+    });
+  }
+
+  return {
+    commitSha,
+    treeSha,
+    branch: normalizedBranch,
+    filesPushed: treeItems.length,
+    totalBytes,
+    skipped,
+  };
+}
+
+async function deployProjectToGitHub({
+  projectPath,
+  token,
+  mode,
+  repoName,
+  repoFullName,
+  visibility,
+  branch,
+  commitMessage,
+}) {
+  const deployMode = mode === "existing" ? "existing" : "create";
+  const normalizedVisibility = normalizeGitHubVisibility(visibility);
+
+  let owner = "";
+  let repo = "";
+  let fullName = "";
+  let url = "";
+  let defaultBranch = "main";
+
+  if (deployMode === "create") {
+    const name = typeof repoName === "string" ? repoName.trim() : "";
+    if (!isValidGitHubRepoName(name)) {
+      throw new Error("Invalid repo name (use letters, numbers, ., _ or -).");
+    }
+
+    const created = await githubApiRequest("/user/repos", {
+      method: "POST",
+      token,
+      body: {
+        name,
+        private: normalizedVisibility === "private",
+        auto_init: false,
+      },
+    });
+
+    owner = typeof created?.owner?.login === "string" ? created.owner.login : "";
+    repo = typeof created?.name === "string" ? created.name : name;
+    fullName =
+      typeof created?.full_name === "string"
+        ? created.full_name
+        : owner && repo
+          ? `${owner}/${repo}`
+          : "";
+    url = typeof created?.html_url === "string" ? created.html_url : "";
+    defaultBranch =
+      typeof created?.default_branch === "string" ? created.default_branch : "main";
+  } else {
+    const rawFullName = typeof repoFullName === "string" ? repoFullName.trim() : "";
+    if (!isValidGitHubRepoSlug(rawFullName) || !rawFullName.includes("/")) {
+      throw new Error("Invalid repo (use owner/repo).");
+    }
+
+    const [parsedOwner, parsedRepo] = rawFullName.split("/", 2);
+    owner = parsedOwner;
+    repo = parsedRepo;
+
+    const info = await githubApiRequest(`/repos/${owner}/${repo}`, { token });
+    fullName = typeof info?.full_name === "string" ? info.full_name : rawFullName;
+    url = typeof info?.html_url === "string" ? info.html_url : "";
+    defaultBranch =
+      typeof info?.default_branch === "string" ? info.default_branch : "main";
+  }
+
+  const targetBranch =
+    typeof branch === "string" && branch.trim() ? branch.trim() : defaultBranch || "main";
+  const deploy = await githubDeployProjectToRepo({
+    token,
+    owner,
+    repo,
+    branch: targetBranch,
+    message: commitMessage,
+    projectPath,
+  });
+
+  return {
+    repo: {
+      owner,
+      name: repo,
+      fullName: fullName || (owner && repo ? `${owner}/${repo}` : ""),
+      url,
+      visibility: normalizedVisibility,
+    },
+    ...deploy,
+  };
+}
+
 // Get available CLIs endpoint
 app.get("/api/clis", requireSession, (req, res) => {
   const clis = Object.entries(CLI_TOOLS).map(([id, cli]) => ({
@@ -465,6 +882,37 @@ app.get("/api/clis", requireSession, (req, res) => {
     available: Boolean(resolveCliCommand(cli, enhancedPath)),
   }));
   res.json(clis);
+});
+
+// List GitHub repositories available to the token
+app.get("/api/github/repos", requireSession, async (req, res) => {
+  const token = getGitHubToken();
+  if (!token) {
+    res.status(400).json({
+      success: false,
+      error: "Missing GitHub token. Set GH_TOKEN or GITHUB_TOKEN in your environment.",
+    });
+    return;
+  }
+
+  const perPage = Math.max(1, Math.min(100, Number(req.query?.per_page) || 100));
+  const page = Math.max(1, Number(req.query?.page) || 1);
+  const q = typeof req.query?.q === "string" ? req.query.q.trim().toLowerCase() : "";
+
+  try {
+    let repos = await githubListRepos(token, { perPage, page });
+    if (q) {
+      repos = repos.filter((repo) =>
+        String(repo.fullName || "").toLowerCase().includes(q),
+      );
+    }
+    res.json({ success: true, repos });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to list GitHub repositories",
+    });
+  }
 });
 
 // List projects (directories under projectsDir)
@@ -776,75 +1224,34 @@ app.post("/api/projects/clone", requireSession, async (req, res) => {
   }
 
   const env = getToolsEnv();
-  const ghCommand = resolveCommand("gh", enhancedPath);
 
   const looksLikeSlug = isValidGitHubRepoSlug(repo);
   const slugHasOwner = looksLikeSlug && repo.includes("/");
 
-  let cloneResult = null;
-
-  if (looksLikeSlug && ghCommand) {
-    cloneResult = await runCommand(
-      ghCommand,
-      ["repo", "clone", repo, projectPath],
-      { cwd: projectsDir, env, timeoutMs: 180000 },
-    );
-  }
-
-  if (!cloneResult || cloneResult.code !== 0) {
-    if (looksLikeSlug && !slugHasOwner) {
-      if (!ghCommand) {
-        res.status(400).json({
-          success: false,
-          error: "Provide an owner/repo slug or a full git URL to clone.",
-        });
-        return;
-      }
-
-      try {
-        if (fs.existsSync(projectPath)) {
-          fs.rmSync(projectPath, { recursive: true, force: true });
-        }
-      } catch {
-        // ignore
-      }
-
-      res.status(500).json({
-        success: false,
-        error:
-          trimOutput(cloneResult?.stderr) ||
-          trimOutput(cloneResult?.stdout) ||
-          "GitHub CLI clone failed. Provide owner/repo or a full git URL to clone.",
-      });
-      return;
-    }
-
-    try {
-      if (fs.existsSync(projectPath)) {
-        fs.rmSync(projectPath, { recursive: true, force: true });
-      }
-    } catch {
-      // ignore
-    }
-
-    let cloneSource = repo;
-    if (looksLikeSlug && slugHasOwner) {
-      const normalizedSlug = repo.replace(/\.git$/i, "");
-      cloneSource = `https://github.com/${normalizedSlug}.git`;
-    } else if (!looksLikeSlug && !isValidGitRemoteUrl(repo) && !repo.includes("://")) {
+  let cloneSource = repo;
+  if (looksLikeSlug) {
+    if (!slugHasOwner) {
       res.status(400).json({
         success: false,
-        error: "Provide a valid GitHub slug (owner/repo) or a full git URL to clone.",
+        error: "Provide a GitHub repo as owner/repo or a full git URL to clone.",
       });
       return;
     }
-
-    cloneResult = await runCommand(
-      gitCommand,
-      ["clone", cloneSource, projectPath],
-      { cwd: projectsDir, env, timeoutMs: 180000 },
-    );
+    const normalizedSlug = repo.replace(/\.git$/i, "");
+    cloneSource = `https://github.com/${normalizedSlug}.git`;
+  } else if (!isValidGitRemoteUrl(repo) && !repo.includes("://")) {
+    res.status(400).json({
+      success: false,
+      error: "Provide a valid GitHub repo (owner/repo) or a full git URL to clone.",
+    });
+    return;
   }
+
+  let cloneResult = await runCommand(
+    gitCommand,
+    ["clone", cloneSource, projectPath],
+    { cwd: projectsDir, env, timeoutMs: 180000 },
+  );
 
   if (cloneResult.code !== 0) {
     try {
@@ -868,7 +1275,70 @@ app.post("/api/projects/clone", requireSession, async (req, res) => {
   res.status(201).json({ success: true, project: { name: projectName } });
 });
 
-// Publish a project to a new GitHub repo
+// Deploy a project to GitHub using the REST API (no gh CLI required)
+app.post("/api/projects/:name/deploy/github", requireSession, async (req, res) => {
+  const projectPath = getProjectPath(req.params.name);
+  if (!projectPath) {
+    res.status(404).json({ success: false, error: "Project not found" });
+    return;
+  }
+
+  const token = getGitHubToken();
+  if (!token) {
+    res.status(400).json({
+      success: false,
+      error: "Missing GitHub token. Set GH_TOKEN or GITHUB_TOKEN in your environment.",
+    });
+    return;
+  }
+
+  const repoName =
+    typeof req.body?.repoName === "string" ? req.body.repoName.trim() : "";
+  const repoFullName =
+    typeof req.body?.repoFullName === "string" ? req.body.repoFullName.trim() : "";
+  const modeRaw = typeof req.body?.mode === "string" ? req.body.mode.trim() : "";
+  const inferredMode = (repoFullName || repoName).includes("/") ? "existing" : "create";
+  const mode = modeRaw === "existing" || modeRaw === "create" ? modeRaw : inferredMode;
+
+  const visibility = normalizeGitHubVisibility(req.body?.visibility);
+  const branch = typeof req.body?.branch === "string" ? req.body.branch.trim() : "";
+  const commitMessage =
+    typeof req.body?.commitMessage === "string"
+      ? req.body.commitMessage.trim()
+      : `Deploy ${req.params.name} via Pocket Terminal`;
+
+  const effectiveFullName = repoFullName || (mode === "existing" ? repoName : "");
+
+  try {
+    const result = await deployProjectToGitHub({
+      projectPath,
+      token,
+      mode,
+      repoName,
+      repoFullName: effectiveFullName,
+      visibility,
+      branch,
+      commitMessage,
+    });
+
+    res.json({
+      success: true,
+      repo: result.repo,
+      branch: result.branch,
+      commitSha: result.commitSha,
+      filesPushed: result.filesPushed,
+      totalBytes: result.totalBytes,
+      skipped: result.skipped,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err?.message || "Failed to deploy project",
+    });
+  }
+});
+
+// Backwards-compatible alias for older clients
 app.post("/api/projects/:name/publish/github", requireSession, async (req, res) => {
   const projectPath = getProjectPath(req.params.name);
   if (!projectPath) {
@@ -876,192 +1346,59 @@ app.post("/api/projects/:name/publish/github", requireSession, async (req, res) 
     return;
   }
 
+  const token = getGitHubToken();
+  if (!token) {
+    res.status(400).json({
+      success: false,
+      error: "Missing GitHub token. Set GH_TOKEN or GITHUB_TOKEN in your environment.",
+    });
+    return;
+  }
+
   const repoName =
     typeof req.body?.repoName === "string" ? req.body.repoName.trim() : "";
-  const visibility =
-    req.body?.visibility === "private" ? "private" : "public";
+  const repoFullName =
+    typeof req.body?.repoFullName === "string" ? req.body.repoFullName.trim() : "";
+  const visibility = normalizeGitHubVisibility(req.body?.visibility);
+  const branch = typeof req.body?.branch === "string" ? req.body.branch.trim() : "";
+  const commitMessage =
+    typeof req.body?.commitMessage === "string"
+      ? req.body.commitMessage.trim()
+      : `Deploy ${req.params.name} via Pocket Terminal`;
 
-  if (!isValidGitHubRepoSlug(repoName)) {
-    res.status(400).json({
-      success: false,
-      error: "Invalid repo name (use repo or owner/repo).",
-    });
+  const inferredTarget = repoFullName || repoName;
+  const mode = inferredTarget.includes("/") ? "existing" : "create";
+
+  if (mode === "create" && !repoName) {
+    res.status(400).json({ success: false, error: "repoName is required." });
     return;
   }
 
-  const ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-  if (!ghToken) {
-    res.status(400).json({
-      success: false,
-      error:
-        "Missing GitHub token. Set GH_TOKEN or GITHUB_TOKEN in your environment.",
-    });
+  if (mode === "existing" && !repoFullName && !repoName) {
+    res.status(400).json({ success: false, error: "repoFullName is required." });
     return;
   }
-
-  const ghCommand = resolveCommand("gh", enhancedPath);
-  if (!ghCommand) {
-    res.status(500).json({
-      success: false,
-      error: "GitHub CLI (gh) is not installed on this server.",
-    });
-    return;
-  }
-
-  const gitCommand = resolveCommand("git", enhancedPath);
-  if (!gitCommand) {
-    res.status(500).json({
-      success: false,
-      error: "git is not installed on this server.",
-    });
-    return;
-  }
-
-  const env = {
-    ...getToolsEnv(),
-    GH_TOKEN: ghToken,
-    GITHUB_TOKEN: ghToken,
-  };
 
   try {
-    ensureProjectGitIgnore(projectPath);
-
-    if (!fs.existsSync(path.join(projectPath, ".git"))) {
-      const init = await runCommand(gitCommand, ["init"], {
-        cwd: projectPath,
-        env,
-      });
-      if (init.timedOut) {
-        res.status(504).json({ success: false, error: "git init timed out" });
-        return;
-      }
-      if (init.code !== 0) {
-        res.status(500).json({
-          success: false,
-          error: init.stderr || init.stdout || "git init failed",
-        });
-        return;
-      }
-    }
-
-    await runCommand(
-      gitCommand,
-      ["config", "user.name", process.env.GIT_AUTHOR_NAME || "Pocket Terminal"],
-      { cwd: projectPath, env },
-    );
-    await runCommand(
-      gitCommand,
-      [
-        "config",
-        "user.email",
-        process.env.GIT_AUTHOR_EMAIL ||
-          "pocket-terminal@users.noreply.github.com",
-      ],
-      { cwd: projectPath, env },
-    );
-
-    const origin = await runCommand(gitCommand, ["remote", "get-url", "origin"], {
-      cwd: projectPath,
-      env,
-    });
-    if (origin.code === 0 && origin.stdout.trim()) {
-      res.status(409).json({
-        success: false,
-        error:
-          "This project already has a git remote named origin. Remove it or publish manually from the terminal.",
-      });
-      return;
-    }
-
-    const add = await runCommand(gitCommand, ["add", "-A"], {
-      cwd: projectPath,
-      env,
-    });
-    if (add.timedOut) {
-      res.status(504).json({ success: false, error: "git add timed out" });
-      return;
-    }
-    if (add.code !== 0) {
-      res.status(500).json({
-        success: false,
-        error: add.stderr || add.stdout || "git add failed",
-      });
-      return;
-    }
-
-    const head = await runCommand(gitCommand, ["rev-parse", "--verify", "HEAD"], {
-      cwd: projectPath,
-      env,
-    });
-    const hasCommit = head.code === 0;
-
-    if (!hasCommit) {
-      const commit = await runCommand(gitCommand, ["commit", "-m", "Initial commit"], {
-        cwd: projectPath,
-        env,
-      });
-      if (commit.timedOut) {
-        res
-          .status(504)
-          .json({ success: false, error: "git commit timed out" });
-        return;
-      }
-      if (commit.code !== 0) {
-        res.status(500).json({
-          success: false,
-          error: commit.stderr || commit.stdout || "git commit failed",
-        });
-        return;
-      }
-    }
-
-    const createArgs = [
-      "repo",
-      "create",
+    const result = await deployProjectToGitHub({
+      projectPath,
+      token,
+      mode,
       repoName,
-      "--source",
-      ".",
-      "--remote",
-      "origin",
-      "--push",
-      "--confirm",
-    ];
-    createArgs.push(visibility === "private" ? "--private" : "--public");
-
-    const create = await runCommand(ghCommand, createArgs, {
-      cwd: projectPath,
-      env,
-      timeoutMs: 300000,
+      repoFullName: mode === "existing" ? inferredTarget : "",
+      visibility,
+      branch,
+      commitMessage,
     });
-    if (create.timedOut) {
-      res.status(504).json({ success: false, error: "GitHub publish timed out" });
-      return;
-    }
-    if (create.code !== 0) {
-      res.status(500).json({
-        success: false,
-        error: create.stderr || create.stdout || "GitHub publish failed",
-      });
-      return;
-    }
-
-    let url = "";
-    const view = await runCommand(ghCommand, ["repo", "view", "--json", "url"], {
-      cwd: projectPath,
-      env,
-    });
-    if (view.code === 0) {
-      try {
-        const data = JSON.parse(view.stdout);
-        url = typeof data?.url === "string" ? data.url : "";
-      } catch {
-        // ignore
-      }
-    }
 
     res.json({
       success: true,
-      repo: { url, name: repoName, visibility },
+      repo: result.repo,
+      branch: result.branch,
+      commitSha: result.commitSha,
+      filesPushed: result.filesPushed,
+      totalBytes: result.totalBytes,
+      skipped: result.skipped,
     });
   } catch (err) {
     res.status(500).json({

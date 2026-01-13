@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for Render - installs dependencies including GitHub CLI, openCode, and Kimi CLI
+# Build script for Render - installs dependencies and optional AI CLIs
 
 set -e
 
@@ -37,27 +37,6 @@ if command -v node >/dev/null 2>&1; then
   create_node_cli_wrapper "codex" "node_modules/@openai/codex/bin/codex.js"
 else
   echo "node not available; skipping Node CLI wrappers"
-fi
-
-echo "Installing GitHub CLI (optional)..."
-if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1; then
-  # Download and install gh CLI
-  GH_VERSION="${GH_VERSION:-2.83.2}"
-  if curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" -o gh.tar.gz; then
-    tar -xzf gh.tar.gz
-    if [ -f "gh_${GH_VERSION}_linux_amd64/bin/gh" ]; then
-      mv "gh_${GH_VERSION}_linux_amd64/bin/gh" ./bin/
-      chmod +x ./bin/gh || true
-      echo "GitHub CLI installed to ./bin/gh"
-    else
-      echo "GitHub CLI download succeeded but binary not found; skipping"
-    fi
-    rm -rf gh.tar.gz "gh_${GH_VERSION}_linux_amd64"
-  else
-    echo "GitHub CLI download failed; skipping"
-  fi
-else
-  echo "curl/tar not available; skipping GitHub CLI install"
 fi
 
 echo "Installing GitHub Copilot CLI (optional)..."

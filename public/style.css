@@ -572,6 +572,232 @@ html, body {
     'Courier New', monospace;
 }
 
+.github-modal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.github-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.github-tab {
+  flex: 1;
+  padding: 10px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.github-tab:hover {
+  background: var(--control);
+  color: var(--text);
+}
+
+.github-tab.active {
+  background: rgba(79, 140, 255, 0.16);
+  border-color: rgba(79, 140, 255, 0.3);
+  color: var(--text);
+}
+
+.github-modal-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.github-panel,
+.github-common-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: 12px;
+}
+
+.github-panel[data-github-panel="create"],
+.github-common-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.github-panel[data-github-panel="existing"] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.github-field label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.github-field input,
+.github-field select,
+.github-search-row input,
+.github-manual-row input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--input-text);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.github-field input::placeholder,
+.github-search-row input::placeholder,
+.github-manual-row input::placeholder {
+  color: var(--muted-2);
+}
+
+.github-field input:focus,
+.github-field select:focus,
+.github-search-row input:focus,
+.github-manual-row input:focus {
+  border-color: rgba(79, 140, 255, 0.8);
+  box-shadow: 0 0 0 4px rgba(79, 140, 255, 0.2);
+}
+
+.github-search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.github-search-row input {
+  flex: 1;
+}
+
+.github-repo-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  overflow: auto;
+  max-height: 240px;
+}
+
+.github-repo-empty {
+  padding: 12px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.github-repo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.github-repo-item:hover {
+  background: var(--control);
+}
+
+.github-repo-item.active {
+  background: rgba(79, 140, 255, 0.16);
+}
+
+.github-repo-item:last-child {
+  border-bottom: none;
+}
+
+.github-repo-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  font-size: 0.85rem;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.github-repo-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--muted-2);
+}
+
+.github-repo-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.github-manual-row {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.github-manual-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.github-modal-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.github-warning {
+  color: var(--muted-2);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  .github-panel[data-github-panel="create"],
+  .github-common-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .github-modal-actions {
+    justify-content: stretch;
+  }
+
+  .github-modal-actions > * {
+    flex: 1;
+  }
+}
+
 .topbar-btn,
 .secondary-btn {
   background: var(--control);

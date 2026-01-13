@@ -13,7 +13,7 @@ services:
       - key: TERMINAL_PASSWORD
         sync: false  # Set in Render dashboard
       - key: GH_TOKEN
-        sync: false  # GitHub token for publish feature (gh auth required)
+        sync: false  # GitHub token for deploy feature (REST API)
       - key: GITHUB_TOKEN
         sync: false  # Alternative GitHub token variable
       - key: RENDER_API_KEY

@@ -54,6 +54,23 @@
   const fileOpenTerminalBtn = document.getElementById('file-open-terminal-btn');
   const fileEditBtn = document.getElementById('file-edit-btn');
   const fileSaveBtn = document.getElementById('file-save-btn');
+  const githubModal = document.getElementById('github-modal');
+  const githubModalClose = document.getElementById('github-modal-close');
+  const githubCancelBtn = document.getElementById('github-cancel-btn');
+  const githubDeployBtn = document.getElementById('github-deploy-btn');
+  const githubModeButtons = Array.from(document.querySelectorAll('[data-github-mode]'));
+  const githubPanels = Array.from(document.querySelectorAll('[data-github-panel]'));
+  const githubRepoNameInput = document.getElementById('github-repo-name');
+  const githubVisibilitySelect = document.getElementById('github-visibility');
+  const githubRepoSearchInput = document.getElementById('github-repo-search');
+  const githubRepoRefreshBtn = document.getElementById('github-repo-refresh');
+  const githubRepoList = document.getElementById('github-repo-list');
+  const githubRepoMoreBtn = document.getElementById('github-repo-more');
+  const githubRepoFullNameInput = document.getElementById('github-repo-fullname');
+  const githubBranchInput = document.getElementById('github-branch');
+  const githubCommitMessageInput = document.getElementById('github-commit-message');
+  const githubModalError = document.getElementById('github-modal-error');
+  const githubModalMessage = document.getElementById('github-modal-message');
 
   // CLI Icons
   const CLI_ICONS = {
@@ -65,7 +82,6 @@
     codex: '💻',
     grok: '🧠',
     copilot: '🤝',
-    github: '🐙',
     bash: '⌨️'
   };
 
@@ -98,6 +114,12 @@
   let activeFilePath = '';
   let activeFileContent = '';
   let isFileEditing = false;
+  let githubDeployMode = 'create';
+  let githubRepos = [];
+  let githubReposPage = 1;
+  let githubReposFullyLoaded = false;
+  let githubReposLoading = false;
+  let githubSelectedRepoFullName = '';
 
   function loadCachedProjects() {
     try {
@@ -390,6 +412,254 @@
     if (fileModalContent) fileModalContent.classList.remove('hidden');
     if (fileSaveBtn) fileSaveBtn.classList.add('hidden');
     if (fileEditBtn) fileEditBtn.classList.remove('hidden');
+  }
+
+  function openGitHubModal() {
+    if (!githubModal) return;
+    githubModal.classList.remove('hidden');
+  }
+
+  function closeGitHubModal() {
+    if (!githubModal) return;
+    githubModal.classList.add('hidden');
+  }
+
+  function setGitHubModalError(message) {
+    if (!githubModalError) return;
+    githubModalError.textContent = message || '';
+    githubModalError.classList.toggle('hidden', !message);
+  }
+
+  function setGitHubModalMessage(message) {
+    if (!githubModalMessage) return;
+    githubModalMessage.textContent = message || '';
+    githubModalMessage.classList.toggle('hidden', !message);
+  }
+
+  function applyGitHubDeployMode(mode) {
+    const normalized = mode === 'existing' ? 'existing' : 'create';
+    githubDeployMode = normalized;
+
+    githubModeButtons.forEach((btn) => {
+      const isActive = btn.dataset.githubMode === normalized;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    githubPanels.forEach((panel) => {
+      const shouldShow = panel.dataset.githubPanel === normalized;
+      panel.classList.toggle('hidden', !shouldShow);
+    });
+
+    if (normalized === 'existing' && githubRepoList && !githubRepos.length) {
+      fetchGitHubRepos({ reset: true });
+    }
+  }
+
+  function resetGitHubModal() {
+    githubDeployMode = 'create';
+    githubSelectedRepoFullName = '';
+
+    if (githubRepoNameInput) {
+      githubRepoNameInput.value = selectedProject || '';
+    }
+    if (githubVisibilitySelect) {
+      githubVisibilitySelect.value = 'public';
+    }
+    if (githubRepoSearchInput) {
+      githubRepoSearchInput.value = '';
+    }
+    if (githubRepoFullNameInput) {
+      githubRepoFullNameInput.value = '';
+    }
+    if (githubBranchInput) {
+      githubBranchInput.value = '';
+    }
+    if (githubCommitMessageInput) {
+      githubCommitMessageInput.value = '';
+    }
+
+    setGitHubModalError(null);
+    setGitHubModalMessage(null);
+    applyGitHubDeployMode('create');
+  }
+
+  function formatRepoUpdatedAt(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+
+  function renderGitHubRepoList() {
+    if (!githubRepoList) return;
+
+    const query = githubRepoSearchInput?.value ? githubRepoSearchInput.value.trim().toLowerCase() : '';
+    const filtered = query
+      ? githubRepos.filter((repo) => String(repo?.fullName || '').toLowerCase().includes(query))
+      : githubRepos;
+
+    if (!filtered.length) {
+      githubRepoList.innerHTML = `<div class="github-repo-empty">${
+        githubReposLoading ? 'Loading…' : 'No repos found.'
+      }</div>`;
+      return;
+    }
+
+    githubRepoList.innerHTML = filtered
+      .map((repo) => {
+        const fullName = typeof repo?.fullName === 'string' ? repo.fullName : '';
+        const isPrivate = Boolean(repo?.private);
+        const updated = formatRepoUpdatedAt(repo?.updatedAt);
+        const active = fullName && fullName === githubSelectedRepoFullName;
+        const privacyLabel = isPrivate ? 'Private' : 'Public';
+        return `
+          <div class="github-repo-item${active ? ' active' : ''}" data-repo-fullname="${escapeHtml(fullName)}" role="button" tabindex="0">
+            <div class="github-repo-name">${escapeHtml(fullName)}</div>
+            <div class="github-repo-meta">
+              <span>${isPrivate ? '🔒' : '🌐'} ${privacyLabel}</span>
+              ${updated ? `<span>• ${escapeHtml(updated)}</span>` : ''}
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+  }
+
+  function mergeRepos(existing, incoming) {
+    const map = new Map();
+    for (const repo of existing) {
+      const key = typeof repo?.fullName === 'string' ? repo.fullName : '';
+      if (!key) continue;
+      map.set(key, repo);
+    }
+    for (const repo of incoming) {
+      const key = typeof repo?.fullName === 'string' ? repo.fullName : '';
+      if (!key) continue;
+      map.set(key, repo);
+    }
+    return Array.from(map.values());
+  }
+
+  async function fetchGitHubRepos({ reset = false } = {}) {
+    if (!githubRepoList) return;
+    if (githubReposLoading) return;
+    if (githubReposFullyLoaded && !reset) return;
+
+    githubReposLoading = true;
+    setGitHubModalError(null);
+
+    if (reset) {
+      githubRepos = [];
+      githubReposPage = 1;
+      githubReposFullyLoaded = false;
+      githubRepoList.innerHTML = '<div class="github-repo-empty">Loading…</div>';
+    }
+
+    if (githubRepoMoreBtn) githubRepoMoreBtn.disabled = true;
+    if (githubRepoRefreshBtn) githubRepoRefreshBtn.disabled = true;
+
+    try {
+      const page = githubReposPage;
+      const response = await apiFetch(`/api/github/repos?per_page=100&page=${page}`);
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to list repos');
+      }
+
+      const next = Array.isArray(data.repos) ? data.repos : [];
+      githubRepos = mergeRepos(githubRepos, next);
+      if (next.length < 100) {
+        githubReposFullyLoaded = true;
+      } else {
+        githubReposPage = page + 1;
+      }
+    } catch (err) {
+      console.error('GitHub repos error:', err);
+      setGitHubModalError(err.message || 'Failed to load GitHub repos');
+    } finally {
+      githubReposLoading = false;
+      renderGitHubRepoList();
+      if (githubRepoMoreBtn) githubRepoMoreBtn.disabled = githubReposFullyLoaded;
+      if (githubRepoRefreshBtn) githubRepoRefreshBtn.disabled = false;
+    }
+  }
+
+  async function deployProjectToGitHubFromModal() {
+    if (!selectedProject) {
+      setGitHubModalError('Select or create a project first.');
+      return;
+    }
+
+    const mode = githubDeployMode;
+    const visibility =
+      githubVisibilitySelect && typeof githubVisibilitySelect.value === 'string'
+        ? githubVisibilitySelect.value
+        : 'public';
+    const branch = githubBranchInput?.value ? githubBranchInput.value.trim() : '';
+    const commitMessage = githubCommitMessageInput?.value
+      ? githubCommitMessageInput.value.trim()
+      : '';
+
+    const payload = { mode, visibility };
+    if (branch) payload.branch = branch;
+    if (commitMessage) payload.commitMessage = commitMessage;
+
+    if (mode === 'create') {
+      const repoName = githubRepoNameInput?.value ? githubRepoNameInput.value.trim() : '';
+      if (!repoName) {
+        setGitHubModalError('Repo name is required.');
+        return;
+      }
+      payload.repoName = repoName;
+    } else {
+      const repoFullName = githubRepoFullNameInput?.value
+        ? githubRepoFullNameInput.value.trim()
+        : githubSelectedRepoFullName;
+      if (!repoFullName || !repoFullName.includes('/')) {
+        setGitHubModalError('Choose a repo or type owner/repo.');
+        return;
+      }
+      payload.repoFullName = repoFullName;
+
+      const targetBranch = branch || 'the default branch';
+      const ok = window.confirm(
+        `Deploy "${selectedProject}" to ${repoFullName}?\n\nThis overwrites files on ${targetBranch}. Continue?`,
+      );
+      if (!ok) return;
+    }
+
+    setGitHubModalError(null);
+    setGitHubModalMessage('Deploying…');
+    if (githubDeployBtn) githubDeployBtn.disabled = true;
+
+    try {
+      const response = await apiFetch(
+        `/api/projects/${encodeURIComponent(selectedProject)}/deploy/github`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        },
+      );
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Failed to deploy project');
+      }
+
+      const url = data.repo?.url || '';
+      const sha = typeof data.commitSha === 'string' ? data.commitSha.slice(0, 7) : '';
+      const summary = url ? `Deployed: ${url}${sha ? ` (${sha})` : ''}` : 'Deployed to GitHub.';
+      setGitHubModalMessage(summary);
+      setLauncherMessage(summary);
+    } catch (err) {
+      console.error('GitHub deploy error:', err);
+      setGitHubModalMessage(null);
+      setGitHubModalError(err.message || 'Failed to deploy project');
+    } finally {
+      if (githubDeployBtn) githubDeployBtn.disabled = false;
+    }
   }
 
   function setFileEditing(editing) {
@@ -1624,6 +1894,69 @@
     });
   }
 
+  if (githubModalClose) {
+    githubModalClose.addEventListener('click', () => closeGitHubModal());
+  }
+
+  if (githubCancelBtn) {
+    githubCancelBtn.addEventListener('click', () => closeGitHubModal());
+  }
+
+  if (githubModal) {
+    githubModal.addEventListener('click', (e) => {
+      if (e.target === githubModal) closeGitHubModal();
+    });
+  }
+
+  githubModeButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      applyGitHubDeployMode(btn.dataset.githubMode);
+    });
+  });
+
+  if (githubRepoRefreshBtn) {
+    githubRepoRefreshBtn.addEventListener('click', () => {
+      fetchGitHubRepos({ reset: true });
+    });
+  }
+
+  if (githubRepoMoreBtn) {
+    githubRepoMoreBtn.addEventListener('click', () => {
+      fetchGitHubRepos({ reset: false });
+    });
+  }
+
+  if (githubRepoSearchInput) {
+    githubRepoSearchInput.addEventListener('input', () => {
+      renderGitHubRepoList();
+    });
+  }
+
+  if (githubRepoFullNameInput) {
+    githubRepoFullNameInput.addEventListener('input', () => {
+      githubSelectedRepoFullName = githubRepoFullNameInput.value.trim();
+      renderGitHubRepoList();
+    });
+  }
+
+  if (githubRepoList) {
+    githubRepoList.addEventListener('click', (e) => {
+      const row = e.target.closest('.github-repo-item');
+      if (!row) return;
+      const fullName = row.dataset.repoFullname || '';
+      if (!fullName) return;
+      githubSelectedRepoFullName = fullName;
+      if (githubRepoFullNameInput) githubRepoFullNameInput.value = fullName;
+      renderGitHubRepoList();
+    });
+  }
+
+  if (githubDeployBtn) {
+    githubDeployBtn.addEventListener('click', () => {
+      deployProjectToGitHubFromModal();
+    });
+  }
+
   if (fileCopyPathBtn) {
     fileCopyPathBtn.addEventListener('click', () => {
       if (!activeFilePath) return;
@@ -1693,48 +2026,9 @@
         return;
       }
 
-      const repoName = window.prompt(
-        'New GitHub repo name:',
-        selectedProject,
-      );
-      if (!repoName) return;
-
-      const makePrivate = window.confirm(
-        'Make this repo private?\n\nOK = Private\nCancel = Public',
-      );
-
       setLauncherError(null);
-      setLauncherMessage('Publishing to GitHub…');
-
-      publishGithubBtn.disabled = true;
-      try {
-        const response = await apiFetch(
-          `/api/projects/${encodeURIComponent(selectedProject)}/publish/github`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              repoName,
-              visibility: makePrivate ? 'private' : 'public'
-            })
-          },
-        );
-
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || 'Failed to publish project');
-        }
-
-        const url = data.repo?.url || '';
-        setLauncherMessage(url ? `Published: ${url}` : 'Published to GitHub.');
-        fetchGitStatus();
-      } catch (err) {
-        console.error('Publish error:', err);
-        setLauncherMessage(null);
-        setLauncherError(err.message || 'Failed to publish project');
-      } finally {
-        publishGithubBtn.disabled = false;
-      }
+      resetGitHubModal();
+      openGitHubModal();
     });
   }
 
