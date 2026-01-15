@@ -234,19 +234,18 @@ function updateToolCards(tools) {
     const tool = tools.find((t) => t.id === toolId);
     
     if (tool && tool.available) {
-      card.classList.remove("unavailable");
+      card.classList.remove("cli-card-disabled");
       card.setAttribute("aria-disabled", "false");
     } else {
-      card.classList.add("unavailable");
+      card.classList.add("cli-card-disabled");
       card.setAttribute("aria-disabled", "true");
-      card.onclick = null;
     }
   });
 }
 
 function launchCLI(toolId) {
   const card = document.querySelector(`[data-tool-id="${toolId}"]`);
-  if (card && card.classList.contains("unavailable")) {
+  if (card && card.classList.contains("cli-card-disabled")) {
     return;
   }
   
@@ -329,6 +328,12 @@ function connectWebSocket(toolId) {
         const message = JSON.parse(event.data);
         if (message.type === "data" && message.data) {
           term.write(message.data);
+        } else if (message.type === "error") {
+          const msg = message.message || "Terminal error";
+          term.write(`\r\n\x1b[31m${msg}\x1b[0m\r\n`);
+          updateConnectionStatus("error", msg);
+        } else if (message.type === "exit") {
+          updateConnectionStatus("disconnected", "Session ended");
         }
       } catch {
         // Plain text message

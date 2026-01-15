@@ -3,7 +3,8 @@ services:
     name: pocket-terminal
     env: node
     plan: free
-    buildCommand: npm install
+    healthCheckPath: /healthz
+    buildCommand: bash ./build.sh
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
