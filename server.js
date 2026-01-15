@@ -24,7 +24,17 @@ if (!fs.existsSync(PROJECTS_DIR)) {
 }
 
 app.use(express.static("public"));
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
+
+// Test auth endpoint
+app.post("/auth", (req, res) => {
+  const { password } = req.body;
+  if (password && password.trim() === PASSWORD) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ error: "Invalid password" });
+  }
+});
 
 // Auth middleware for REST API
 const authMiddleware = (req, res, next) => {
