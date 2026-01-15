@@ -4,93 +4,98 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Pocket Terminal</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 </head>
 <body>
-  <!-- Login -->
+  <!-- Login Screen -->
   <div id="login-screen" class="screen">
     <div class="login-container">
       <h1>Pocket Terminal</h1>
-      <p>Mobile Workspace</p>
+      <p>Your Mobile Workspace</p>
       <form id="login-form">
-        <input type="password" id="password" placeholder="Access Password" required>
-        <button type="submit">Unlock</button>
+        <input type="password" id="password" placeholder="Access Password" required autocomplete="current-password">
+        <button type="submit" class="primary-btn">Unlock</button>
       </form>
-      <p id="login-error" class="error"></p>
+      <span id="login-error" class="error-text"></span>
     </div>
   </div>
 
-  <!-- Dashboard -->
+  <!-- Dashboard Screen -->
   <div id="launcher-screen" class="screen hidden">
     <header class="main-header">
-      <div class="brand">
-        <h1>Workspace</h1>
-        <span id="connection-status" class="status-badge">Online</span>
+      <div>
+        <h1 style="margin:0; font-size: 18px;">Workspace</h1>
+        <span id="status" style="font-size: 10px; color: #10b981; font-weight: 700;">● ONLINE</span>
       </div>
-      <button id="logout-btn" class="icon-btn">✕</button>
+      <button onclick="logout()" style="background:none; border:none; color:var(--text-muted); font-size: 20px;">✕</button>
     </header>
 
     <main class="dashboard-content">
+      <!-- Project Selection -->
       <section class="panel">
-        <div class="panel-header">
-          <h2>Context</h2>
-        </div>
-        <div class="select-wrapper">
-          <select id="project-select">
-            <option value="">Root Workspace</option>
-          </select>
-        </div>
+        <span class="panel-title">Active Project</span>
+        <select id="project-select" style="width:100%; padding:12px; border-radius:12px; background:var(--bg-alt); color:var(--text); border:1px solid var(--border);">
+          <option value="">Root Environment</option>
+        </select>
       </section>
 
+      <!-- Clone Repo -->
       <section class="panel">
-        <div class="panel-header">
-          <h2>Launch CLI</h2>
-          <span class="hint" id="current-ctx">Root</span>
-        </div>
+        <span class="panel-title">Clone Repository</span>
+        <input type="text" id="repo-url" placeholder="GitHub HTTPS URL" style="margin-bottom:8px; padding:12px; font-size:14px;">
+        <input type="password" id="repo-token" placeholder="Token (Optional for Private)" style="margin-bottom:12px; padding:12px; font-size:14px;">
+        <button onclick="cloneRepo()" class="primary-btn" style="padding:12px; font-size:14px;">Clone to Workspace</button>
+      </section>
+
+      <!-- Launchers -->
+      <section class="panel">
+        <span class="panel-title">Quick Launch</span>
         <div class="cli-grid">
-          <button class="cli-card" data-cmd="claude">
-            <div class="cli-icon claude">C</div>
+          <button class="cli-card" onclick="launchCLI('claude-code')">
+            <div class="cli-icon icon-claude">C</div>
             <span>Claude</span>
           </button>
-          <button class="cli-card" data-cmd="gemini" data-args="chat">
-            <div class="cli-icon gemini">G</div>
+          <button class="cli-card" onclick="launchCLI('gemini', ['chat'])">
+            <div class="cli-icon icon-gemini">G</div>
             <span>Gemini</span>
           </button>
-          <button class="cli-card" data-cmd="bash">
-            <div class="cli-icon bash">B</div>
+          <button class="cli-card" onclick="launchCLI('bash')">
+            <div class="cli-icon icon-bash">B</div>
             <span>Bash</span>
           </button>
-          <button class="cli-card" data-cmd="git" data-args="status">
-            <div class="cli-icon git">G</div>
-            <span>Git</span>
+          <button class="cli-card" onclick="launchCLI('git', ['status'])">
+            <div class="cli-icon icon-git">G</div>
+            <span>Status</span>
           </button>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Terminal -->
+  <!-- Terminal Screen -->
   <div id="terminal-screen" class="screen hidden">
     <header class="term-header">
-      <button onclick="closeTerminal()" class="text-btn">← Back</button>
-      <div id="term-title">Terminal</div>
-      <div style="width: 40px"></div>
+      <button onclick="closeTerminal()" style="background:none; border:none; color:white; font-size: 14px; font-weight:600;">← Back</button>
+      <span id="term-title">Terminal</span>
+      <div style="width:40px"></div>
     </header>
     <div id="terminal-container"></div>
     <div class="mobile-tools">
-      <button class="tool-btn" data-key="CTRL">CTRL</button>
-      <button class="tool-btn" data-key="TAB">TAB</button>
-      <button class="tool-btn" data-key="ESC">ESC</button>
-      <button class="tool-btn" data-key="UP">↑</button>
-      <button class="tool-btn" data-key="DOWN">↓</button>
+      <button class="tool-btn" id="ctrl-btn">CTRL</button>
+      <button class="tool-btn" onclick="sendKey('\t')">TAB</button>
+      <button class="tool-btn" onclick="sendKey('\x1b')">ESC</button>
+      <button class="tool-btn" onclick="sendKey('\x1b[A')">↑</button>
+      <button class="tool-btn" onclick="sendKey('\x1b[B')">↓</button>
+      <button class="tool-btn" onclick="sendKey('\x1b[D')">←</button>
+      <button class="tool-btn" onclick="sendKey('\x1b[C')">→</button>
+      <button class="tool-btn" onclick="sendKey('/')">/</button>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script src="terminal.js"></script>
 </body>
 </html>
