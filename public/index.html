@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0b1020">
@@ -14,307 +14,112 @@
   <!-- Login Screen -->
   <div id="login-screen" class="screen">
     <div class="login-container">
-      <button
-        class="topbar-btn theme-toggle login-theme-toggle"
-        type="button"
-        data-theme-toggle
-        aria-label="Toggle theme"
-        title="Toggle theme"
-      ></button>
+      <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">🌓</button>
       <h1>Pocket Terminal</h1>
-      <p>Enter password to access your AI CLIs</p>
+      <p>AI-Powered Mobile Workspace</p>
       <form id="login-form">
-        <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
-        <button type="submit">Connect</button>
+        <input type="password" id="password" placeholder="Enter Access Password" required>
+        <button type="submit">Unlock Workspace</button>
       </form>
       <p id="login-error" class="error"></p>
     </div>
   </div>
 
-  <!-- CLI Launcher Screen -->
+  <!-- Dashboard -->
   <div id="launcher-screen" class="screen hidden">
-    <div class="launcher-topbar">
-      <div class="launcher-brand">
-        <div class="launcher-title">Pocket Terminal</div>
-        <div class="launcher-subtitle">AI coding assistants at your fingertips</div>
+    <header class="main-header">
+      <div class="brand">
+        <span class="logo">⚡</span>
+        <div>
+          <h1>Pocket Terminal</h1>
+          <span id="connection-status" class="status-badge">Connected</span>
+        </div>
       </div>
-      <div class="launcher-actions">
-        <button
-          class="topbar-btn theme-toggle"
-          type="button"
-          data-theme-toggle
-          aria-label="Toggle theme"
-          title="Toggle theme"
-        ></button>
-        <button id="logout-btn" class="topbar-btn" type="button">Log out</button>
+      <div class="header-actions">
+        <button class="theme-toggle" data-theme-toggle>🌓</button>
+        <button id="logout-btn">Exit</button>
       </div>
-    </div>
-    <div class="launcher-meta">
-      <p id="launcher-error" class="error hidden"></p>
-      <button id="retry-btn" class="secondary-btn hidden" type="button">Retry</button>
-    </div>
-    <p id="launcher-message" class="message hidden"></p>
+    </header>
 
-    <!-- Project Section - Always visible at top -->
-    <div class="project-section-wrapper">
-      <div class="project-section">
-        <div class="project-row">
-          <div class="project-label">
-            <span class="project-icon">📁</span>
-            <span class="project-label-text">Project</span>
-          </div>
-          <div class="project-selector">
-            <select id="project-select" class="project-select"></select>
+    <main class="dashboard-content">
+      <!-- Project Section -->
+      <section class="panel project-panel">
+        <div class="panel-header">
+          <h2>Your Projects</h2>
+          <div class="panel-actions">
+            <button id="clone-repo-btn" class="small-btn">+ Clone Repo</button>
+            <button id="new-project-btn" class="small-btn">+ New</button>
           </div>
         </div>
-        <div class="project-actions-row">
-          <button id="new-project-btn" class="action-btn" type="button" title="Create new project">
-            <span class="btn-icon">+</span>
-            <span class="btn-text">New</span>
+        <div class="project-selector-container">
+          <select id="project-select">
+            <option value="">Select a repository...</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- CLI Grid -->
+      <section class="panel cli-panel">
+        <div class="panel-header">
+          <h2>Launch AI Assistant</h2>
+          <span class="hint">Will open in selected project</span>
+        </div>
+        <div class="cli-grid">
+          <button class="cli-card" data-cmd="claude" data-args="config,setup">
+            <div class="cli-icon claude">C</div>
+            <div class="cli-info">
+              <h3>Claude Code</h3>
+              <p>Anthropic's CLI agent</p>
+            </div>
           </button>
-          <button id="publish-github-btn" class="action-btn github-btn" type="button" title="Publish to GitHub">
-            <span class="btn-icon">🚀</span>
-            <span class="btn-text">Publish</span>
+          <button class="cli-card" data-cmd="gemini" data-args="chat">
+            <div class="cli-icon gemini">G</div>
+            <div class="cli-info">
+              <h3>Gemini</h3>
+              <p>Google AI assistant</p>
+            </div>
           </button>
-          <button id="delete-project-btn" class="action-btn danger-btn" type="button" title="Delete this project">
-            <span class="btn-icon">🗑️</span>
-            <span class="btn-text">Delete</span>
+          <button class="cli-card" data-cmd="gh" data-args="copilot,suggest">
+            <div class="cli-icon copilot">🐙</div>
+            <div class="cli-info">
+              <h3>Copilot</h3>
+              <p>GitHub CLI agent</p>
+            </div>
+          </button>
+          <button class="cli-card" data-cmd="bash">
+            <div class="cli-icon terminal">>_</div>
+            <div class="cli-info">
+              <h3>Bash</h3>
+              <p>Standard terminal</p>
+            </div>
           </button>
         </div>
-      </div>
-    </div>
-
-    <!-- Tabs for mobile -->
-    <div class="launcher-tabs" role="tablist" aria-label="Launcher views">
-      <button class="launcher-tab" type="button" data-launcher-tab="tools" aria-selected="true">🧩 Tools</button>
-      <button class="launcher-tab" type="button" data-launcher-tab="files" aria-selected="false">🗂️ Files</button>
-      <button class="launcher-tab" type="button" data-launcher-tab="git" aria-selected="false">📝 Git</button>
-    </div>
-
-    <div class="launcher-body">
-      <div class="launcher-sidebar">
-
-        <div class="files-panel">
-          <div class="files-header">
-            <div class="files-title">
-              <span class="files-icon">🗂️</span>
-              <span class="files-title-text">Files</span>
-              <span id="files-count" class="files-count"></span>
-            </div>
-            <div class="files-header-actions">
-              <button id="toggle-history-btn" class="icon-btn" type="button" title="Recent files">⏱️</button>
-              <button id="refresh-files-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
-            </div>
-          </div>
-          <div id="file-history-panel" class="file-history-panel hidden">
-            <div class="file-history-header">
-              <span class="file-history-title">Recent Files</span>
-              <button id="clear-history-btn" class="icon-btn" type="button" title="Clear history">🗑️</button>
-            </div>
-            <div id="file-history-list" class="file-history-list">
-              <div class="files-empty">No recent files</div>
-            </div>
-          </div>
-          <div class="files-nav">
-            <button id="files-up-btn" class="icon-btn" type="button" title="Up">⬆️</button>
-            <div id="files-path" class="files-path">/</div>
-          </div>
-          <div class="files-search-row">
-            <input id="files-filter" class="files-filter" type="text" placeholder="Filter files…" autocomplete="off">
-          </div>
-          <p id="files-error" class="files-error hidden"></p>
-          <div id="files-list" class="files-list">
-            <div class="files-empty">Select a project to view files.</div>
-          </div>
-        </div>
-
-        <!-- Git Status Panel -->
-        <div id="git-status-panel" class="git-status-panel hidden">
-          <div class="git-status-header">
-            <div class="git-status-title">
-              <span class="git-icon">📝</span>
-              <span id="git-branch-name">main</span>
-              <span class="git-commit-count" id="git-commit-count"></span>
-            </div>
-            <button id="refresh-git-btn" class="icon-btn" type="button" title="Refresh">🔄</button>
-          </div>
-          <div class="git-repo-actions">
-            <button id="git-clone-btn" class="action-btn" type="button" title="Clone a repository into a new project">
-              <span class="btn-icon">📥</span>
-              <span class="btn-text">Clone</span>
-            </button>
-            <button id="git-init-btn" class="action-btn" type="button" title="Initialize git in this project">
-              <span class="btn-icon">✨</span>
-              <span class="btn-text">Init</span>
-            </button>
-            <button id="git-remote-btn" class="action-btn" type="button" title="Set or update origin remote URL">
-              <span class="btn-icon">🔗</span>
-              <span class="btn-text">Remote</span>
-            </button>
-            <button id="git-pull-btn" class="action-btn" type="button" title="Pull latest changes">
-              <span class="btn-icon">⬇️</span>
-              <span class="btn-text">Pull</span>
-            </button>
-            <button id="git-push-btn" class="action-btn" type="button" title="Push commits">
-              <span class="btn-icon">⬆️</span>
-              <span class="btn-text">Push</span>
-            </button>
-          </div>
-          <div class="git-repo-meta">
-            <div class="git-repo-row">
-              <span class="git-repo-label">Origin</span>
-              <span id="git-origin-url" class="git-origin-url">—</span>
-              <button id="git-copy-origin-btn" class="icon-btn" type="button" title="Copy origin URL">📋</button>
-            </div>
-            <p id="git-repo-hint" class="git-repo-hint hidden"></p>
-          </div>
-          <div id="git-status-content" class="git-status-content">
-            <div class="git-status-empty">No changes</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="launcher-main">
-        <div class="cli-section">
-          <div class="cli-section-header">Available CLI Tools</div>
-          <div id="cli-grid" class="cli-grid">
-            <!-- CLIs will be populated here -->
-          </div>
-        </div>
-      </div>
-    </div>
+      </section>
+    </main>
   </div>
 
   <!-- Terminal Screen -->
   <div id="terminal-screen" class="screen hidden">
-    <div id="terminal-header">
-      <button id="exit-btn" class="header-btn exit-btn" type="button">Exit</button>
-      <span id="current-cli">Terminal</span>
-      <div class="terminal-actions">
-        <button
-          class="header-btn theme-toggle"
-          type="button"
-          data-theme-toggle
-          aria-label="Toggle theme"
-          title="Toggle theme"
-        ></button>
-        <button id="switch-btn" class="header-btn" type="button">Switch</button>
-      </div>
+    <div class="terminal-header">
+      <button id="back-to-launcher">← Dashboard</button>
+      <div id="active-cli-title">Terminal</div>
+      <button id="clear-terminal">Clear</button>
     </div>
     <div id="terminal-container"></div>
-    <div id="mobile-toolbar">
-      <button data-key="Escape">ESC</button>
-      <button data-key="Tab">TAB</button>
-      <button data-action="copy" aria-label="Copy terminal selection">COPY</button>
-      <button data-action="paste" aria-label="Paste from clipboard">PASTE</button>
-      <button data-key="ArrowUp">^</button>
-      <button data-key="ArrowDown">v</button>
-      <button data-ctrl="c">^C</button>
-      <button data-ctrl="d">^D</button>
-      <button data-ctrl="z">^Z</button>
+    <!-- Mobile Helper Keys -->
+    <div class="mobile-keys">
+      <button class="key-btn" data-key="Tab">TAB</button>
+      <button class="key-btn" data-key="Control">CTRL</button>
+      <button class="key-btn" data-key="Escape">ESC</button>
+      <button class="key-btn" data-key="ArrowUp">↑</button>
+      <button class="key-btn" data-key="ArrowDown">↓</button>
+      <button class="key-btn" data-key="ArrowLeft">←</button>
+      <button class="key-btn" data-key="ArrowRight">→</button>
     </div>
   </div>
 
-  <!-- Status indicator -->
-  <div id="status" class="hidden">
-    <span id="status-text">Disconnected</span>
-  </div>
-
-  <!-- File Viewer -->
-  <div id="file-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="File viewer">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div id="file-modal-title" class="modal-title"></div>
-        <button id="file-modal-close" class="icon-btn" type="button" aria-label="Close">✕</button>
-      </div>
-      <div class="modal-toolbar">
-        <button id="file-copy-path-btn" class="secondary-btn" type="button">Copy path</button>
-        <button id="file-open-terminal-btn" class="secondary-btn" type="button">Open in terminal</button>
-        <button id="file-edit-btn" class="secondary-btn" type="button">Edit</button>
-        <button id="file-save-btn" class="secondary-btn hidden" type="button">Save</button>
-      </div>
-      <pre id="file-modal-content" class="file-modal-content"></pre>
-      <textarea id="file-modal-editor" class="file-modal-editor hidden" spellcheck="false"></textarea>
-    </div>
-  </div>
-
-  <!-- GitHub Deploy Modal -->
-  <div id="github-modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Deploy to GitHub">
-    <div class="modal-card">
-      <div class="modal-header">
-        <div class="modal-title">Deploy to GitHub</div>
-        <button id="github-modal-close" class="icon-btn" type="button" aria-label="Close">✕</button>
-      </div>
-      <div class="github-modal-body">
-        <div class="github-tabs" role="tablist" aria-label="GitHub deploy mode">
-          <button class="github-tab active" type="button" data-github-mode="create" aria-selected="true">New repo</button>
-          <button class="github-tab" type="button" data-github-mode="existing" aria-selected="false">Existing repo</button>
-        </div>
-
-        <div class="github-modal-content">
-          <div class="github-panel" data-github-panel="create">
-            <div class="github-field">
-              <label for="github-repo-name">Repo name</label>
-              <input id="github-repo-name" type="text" placeholder="my-project" autocomplete="off">
-            </div>
-            <div class="github-field">
-              <label for="github-visibility">Visibility</label>
-              <select id="github-visibility">
-                <option value="public">Public</option>
-                <option value="private">Private</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="github-panel hidden" data-github-panel="existing">
-            <div class="github-search-row">
-              <input id="github-repo-search" type="text" placeholder="Search repos…" autocomplete="off">
-              <button id="github-repo-refresh" class="icon-btn" type="button" title="Refresh">🔄</button>
-            </div>
-            <div id="github-repo-list" class="github-repo-list">
-              <div class="github-repo-empty">Loading…</div>
-            </div>
-            <div class="github-repo-footer">
-              <button id="github-repo-more" class="secondary-btn" type="button">Load more</button>
-              <div class="github-manual-row">
-                <div class="github-manual-label">Or type owner/repo</div>
-                <input id="github-repo-fullname" type="text" placeholder="owner/repo" autocomplete="off">
-              </div>
-            </div>
-          </div>
-
-          <div class="github-common-panel">
-            <div class="github-field">
-              <label for="github-branch">Branch (optional)</label>
-              <input id="github-branch" type="text" placeholder="main" autocomplete="off">
-            </div>
-            <div class="github-field">
-              <label for="github-commit-message">Commit message (optional)</label>
-              <input id="github-commit-message" type="text" placeholder="Deploy via Pocket Terminal" autocomplete="off">
-            </div>
-          </div>
-
-          <p id="github-modal-error" class="error hidden"></p>
-          <p id="github-modal-message" class="message hidden"></p>
-
-          <div class="github-modal-actions">
-            <button id="github-deploy-btn" class="action-btn github-btn" type="button">
-              <span class="btn-icon">🚀</span>
-              <span class="btn-text">Deploy</span>
-            </button>
-            <button id="github-cancel-btn" class="secondary-btn" type="button">Cancel</button>
-          </div>
-          <p class="github-warning">
-            Deploying to an existing repo overwrites files on that branch.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   <script src="terminal.js"></script>
 </body>
 </html>
