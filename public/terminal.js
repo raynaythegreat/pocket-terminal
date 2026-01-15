@@ -5,12 +5,12 @@ let sessionToken = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_DELAY = 30000;
 
-// Optimized Terminal Theme
+// Optimized Terminal Theme to match UI
 const terminalTheme = {
-  background: '#000000',
+  background: '#09090b',
   foreground: '#fafafa',
   cursor: '#6366f1',
-  cursorAccent: '#000000',
+  cursorAccent: '#09090b',
   selection: 'rgba(99, 102, 241, 0.3)',
   black: '#18181b',
   red: '#ef4444',
@@ -32,6 +32,7 @@ const terminalTheme = {
 
 function showToast(message, type = "info") {
   const toast = document.getElementById("toast");
+  if (!toast) return;
   toast.textContent = message;
   toast.className = `toast ${type}`;
   toast.classList.remove("hidden");
@@ -40,7 +41,8 @@ function showToast(message, type = "info") {
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-  document.getElementById(id).classList.remove('hidden');
+  const target = document.getElementById(id);
+  if (target) target.classList.remove('hidden');
   
   if (id === 'terminal-screen' && term) {
     setTimeout(() => {
@@ -51,8 +53,9 @@ function showScreen(id) {
 }
 
 async function handleLogin(e) {
-  e.preventDefault();
-  const password = document.getElementById('password').value;
+  if (e) e.preventDefault();
+  const passwordInput = document.getElementById('password');
+  const password = passwordInput ? passwordInput.value : '';
   const errorEl = document.getElementById('login-error');
   
   try {
@@ -66,12 +69,13 @@ async function handleLogin(e) {
     if (data.success) {
       sessionToken = data.token;
       sessionStorage.setItem("pocket_token", sessionToken);
+      if (errorEl) errorEl.textContent = "";
       connect(sessionToken);
     } else {
-      errorEl.textContent = "Invalid password. Access denied.";
+      if (errorEl) errorEl.textContent = "Invalid password. Access denied.";
     }
   } catch (err) {
-    errorEl.textContent = "Server connection failed.";
+    if (errorEl) errorEl.textContent = "Server connection failed.";
   }
 }
 
@@ -84,13 +88,17 @@ function connect(token) {
   socket.onopen = () => {
     reconnectAttempts = 0;
     socket.send(JSON.stringify({ type: "auth", token: token }));
-    document.getElementById('status-dot').className = 'dot online';
-    document.getElementById('status-text').textContent = 'CONNECTED';
+    const dot = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    if (dot) dot.className = 'dot online';
+    if (text) text.textContent = 'CONNECTED';
   };
 
   socket.onclose = () => {
-    document.getElementById('status-dot').className = 'dot offline';
-    document.getElementById('status-text').textContent = 'DISCONNECTED';
+    const dot = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    if (dot) dot.className = 'dot offline';
+    if (text) text.textContent = 'DISCONNECTED';
     if (sessionToken) scheduleReconnect();
   };
 
@@ -106,19 +114,18 @@ function connect(token) {
         case "authenticated":
           showScreen("launcher-screen");
           loadProjects();
+          initTerminal();
+          break;
+        case "terminal_output":
+          if (term) term.write(data.data);
           break;
         case "error":
           showToast(data.message, "error");
-          if (data.message.toLowerCase().includes("auth") || data.message.toLowerCase().includes("session")) {
-            logout();
-          }
-          break;
-        case "data":
-          if (term) term.write(data.data);
+          if (data.message === "Invalid session") logout();
           break;
       }
     } catch (e) {
-      console.error("Error parsing message", e);
+      console.error("Msg Error", e);
     }
   };
 }
@@ -126,6 +133,7 @@ function connect(token) {
 function scheduleReconnect() {
   reconnectAttempts++;
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+  showToast(`Reconnecting in ${delay/1000}s...`, "warning");
   setTimeout(() => {
     if (sessionToken) connect(sessionToken);
   }, delay);
@@ -133,48 +141,56 @@ function scheduleReconnect() {
 
 function initTerminal() {
   if (term) return;
-  
+
   term = new Terminal({
     theme: terminalTheme,
-    fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
-    fontSize: 14,
     cursorBlink: true,
+    fontSize: 14,
+    fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
+    convertEol: true,
     allowProposedApi: true
   });
-  
+
   fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal-container'));
-  
+  fitAddon.fit();
+
   term.onData(data => {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "input", data }));
+      socket.send(JSON.stringify({ type: "terminal_input", data }));
     }
   });
 
-  window.addEventListener('resize', () => fitAddon.fit());
+  window.addEventListener('resize', () => {
+    fitAddon.fit();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: "resize",
+        cols: term.cols,
+        rows: term.rows
+      }));
+    }
+  });
 }
 
 function launchCLI(tool, args = []) {
   const project = document.getElementById('project-select').value;
-  document.getElementById('term-title').textContent = `${tool}${project ? ' @ ' + project : ''}`;
-  
-  initTerminal();
-  showScreen("terminal-screen");
-  
-  const command = args.length > 0 ? `${tool} ${args.join(' ')}` : tool;
+  showScreen('terminal-screen');
   
   if (socket && socket.readyState === WebSocket.OPEN) {
-    term.reset();
     socket.send(JSON.stringify({
       type: "spawn",
-      command: command,
       project: project,
       cols: term.cols,
       rows: term.rows
     }));
-  } else {
-    showToast("Socket not connected", "error");
+    
+    // Auto-run the tool command
+    const cmd = tool + " " + args.join(" ") + "\n";
+    setTimeout(() => {
+      socket.send(JSON.stringify({ type: "terminal_input", data: cmd }));
+    }, 500);
   }
 }
 
@@ -183,11 +199,10 @@ async function loadProjects() {
     const res = await fetch('/api/projects', {
       headers: { 'Authorization': sessionToken }
     });
-    if (!res.ok) throw new Error();
     const projects = await res.json();
     const select = document.getElementById('project-select');
-    
-    // Preserve "Root" option
+    if (!select) return;
+
     select.innerHTML = '<option value="">Root Environment</option>';
     projects.forEach(p => {
       const opt = document.createElement('option');
@@ -196,58 +211,53 @@ async function loadProjects() {
       select.appendChild(opt);
     });
   } catch (err) {
-    console.error("Failed to load projects");
+    console.error("Load projects failed");
   }
 }
 
-function promptClone() {
-  const url = prompt("Enter Git Repository URL:");
-  if (!url) return;
-  
-  showToast("Cloning repository...");
-  fetch('/api/clone', {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'Authorization': sessionToken
-    },
-    body: JSON.stringify({ repoUrl: url })
-  })
-  .then(res => res.json())
-  .then(data => {
+async function cloneRepo() {
+  const repoUrl = prompt("Enter Git Repository URL:");
+  if (!repoUrl) return;
+
+  showToast("Cloning repository...", "info");
+  try {
+    const res = await fetch('/api/clone', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': sessionToken
+      },
+      body: JSON.stringify({ repoUrl })
+    });
+    const data = await res.json();
     if (data.success) {
-      showToast("Clone successful!", "success");
+      showToast("Repository cloned successfully!", "success");
       loadProjects();
     } else {
-      showToast(data.error || "Clone failed", "error");
+      showToast("Clone failed: " + data.error, "error");
     }
-  });
-}
-
-function clearTerminal() {
-  if (term) term.reset();
-}
-
-function closeTerminal() {
-  showScreen("launcher-screen");
+  } catch (err) {
+    showToast("Network error during clone", "error");
+  }
 }
 
 function logout() {
   sessionToken = null;
   sessionStorage.removeItem("pocket_token");
   if (socket) socket.close();
-  showScreen("login-screen");
+  showScreen('login-screen');
 }
 
-// Auto-login on load
+// Global App Init
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('login-form').addEventListener('submit', handleLogin);
-  
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) loginForm.addEventListener('submit', handleLogin);
+
   const savedToken = sessionStorage.getItem("pocket_token");
   if (savedToken) {
     sessionToken = savedToken;
-    connect(savedToken);
+    connect(sessionToken);
   } else {
-    showScreen("login-screen");
+    showScreen('login-screen');
   }
 });

@@ -1,26 +1,13 @@
 services:
   - type: web
     name: pocket-terminal
-    runtime: node
-    healthCheckPath: /healthz
-    buildCommand: chmod +x build.sh && ./build.sh
+    env: node
+    plan: free
+    buildCommand: npm install
     startCommand: npm start
-    disk:
-      name: pocket-terminal-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
+      - key: NODE_VERSION
+        value: 22.0.0
       - key: TERMINAL_PASSWORD
-        sync: false  # Set in Render dashboard
-      - key: GH_TOKEN
-        sync: false  # GitHub token for deploy feature (REST API)
-      - key: GITHUB_TOKEN
-        sync: false  # Alternative GitHub token variable
-      - key: RENDER_API_KEY
-        sync: false  # Set in Render dashboard (do not commit secrets)
-      - key: NODE_ENV
-        value: production
-      - key: WORKSPACE_DIR
-        value: /var/data/pocket-terminal-workspace
-      - key: CLI_HOME_DIR
-        value: /var/data/pocket-terminal-home
+        sync: false
+        description: "The password used to unlock the web terminal"

@@ -5,6 +5,7 @@ const pty = require("node-pty");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const { exec } = require("child_process");
 require("dotenv").config();
 
 const app = express();
@@ -17,6 +18,10 @@ const PORT = process.env.PORT || 3000;
 // 1️⃣ Secure password handling
 // ---------------------------------------------------------------------------
 const RAW_PASSWORD = (process.env.TERMINAL_PASSWORD || "Superprimitive69!").trim();
+if (process.env.TERMINAL_PASSWORD === undefined) {
+  console.warn("⚠️ WARNING: TERMINAL_PASSWORD not set. Using default fallback.");
+}
+
 const PASSWORD_HASH = crypto
   .createHash("sha256")
   .update(RAW_PASSWORD)
@@ -43,6 +48,7 @@ app.use(express.json({ limit: "1mb" }));
 app.post("/auth", (req, res) => {
   const { password } = req.body;
   if (password && hashPassword(password) === PASSWORD_HASH) {
+    // Return the hash as the session token
     res.json({ success: true, token: PASSWORD_HASH });
   } else {
     res.status(401).json({ error: "Invalid password" });
@@ -87,7 +93,7 @@ app.post("/api/clone", authMiddleware, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// 5️⃣ WebSocket Terminal Logic
+// 5️⃣ Terminal logic (WebSocket)
 // ---------------------------------------------------------------------------
 wss.on("connection", (ws) => {
   let shell = null;
@@ -106,38 +112,42 @@ wss.on("connection", (ws) => {
       if (data.token === PASSWORD_HASH) {
         authenticated = true;
         ws.send(JSON.stringify({ type: "authenticated" }));
+        return;
       } else {
         ws.send(JSON.stringify({ type: "error", message: "Invalid session" }));
         ws.close();
+        return;
       }
-      return;
     }
 
     if (!authenticated) return;
 
-    // Command handling
-    if (data.type === "spawn") {
+    // Terminal Commands
+    if (data.type === "terminal_input") {
+      if (shell) shell.write(data.data);
+    } else if (data.type === "spawn") {
       if (shell) shell.kill();
 
-      const cwd = data.project ? path.join(PROJECTS_DIR, data.project) : PROJECTS_DIR;
-      
+      const workingDir = data.project 
+        ? path.join(PROJECTS_DIR, data.project) 
+        : PROJECTS_DIR;
+
       shell = pty.spawn(process.platform === "win32" ? "powershell.exe" : "bash", [], {
         name: "xterm-color",
         cols: data.cols || 80,
         rows: data.rows || 24,
-        cwd: cwd,
+        cwd: workingDir,
         env: process.env,
       });
 
-      shell.on("data", (chunk) => {
-        ws.send(JSON.stringify({ type: "data", data: chunk }));
+      shell.onData((output) => {
+        ws.send(JSON.stringify({ type: "terminal_output", data: output }));
       });
 
-      if (data.command) {
-        shell.write(`${data.command}\r`);
-      }
-    } else if (data.type === "input") {
-      if (shell) shell.write(data.data);
+      shell.onExit(() => {
+        ws.send(JSON.stringify({ type: "terminal_exit" }));
+        shell = null;
+      });
     } else if (data.type === "resize") {
       if (shell) shell.resize(data.cols, data.rows);
     }
@@ -149,5 +159,5 @@ wss.on("connection", (ws) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Pocket Terminal active on http://localhost:${PORT}`);
+  console.log(`🚀 Pocket Terminal running on port ${PORT}`);
 });
