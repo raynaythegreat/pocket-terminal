@@ -16,7 +16,7 @@
     <div class="login-container">
       <div class="glow-orb"></div>
       <h1>Pocket Terminal</h1>
-      <p>Mobile-First AI Workspace</p>
+      <p>Mobile AI Workspace</p>
       <form id="login-form">
         <input type="password" id="password" placeholder="Access Password" required autocomplete="current-password">
         <button type="submit">Unlock</button>
@@ -25,7 +25,7 @@
     </div>
   </div>
 
-  <!-- Dashboard -->
+  <!-- Launcher / Dashboard -->
   <div id="launcher-screen" class="screen hidden">
     <header class="main-header">
       <div class="brand">
@@ -41,55 +41,51 @@
     <main class="dashboard-content">
       <section class="panel">
         <div class="panel-header">
-          <h2>Project</h2>
-          <div class="panel-actions">
-            <button id="clone-repo-btn" class="text-btn">+ Clone</button>
-          </div>
+          <h2>Project Context</h2>
+          <button id="clone-repo-btn" class="text-btn">+ Clone Repo</button>
         </div>
         <div class="select-wrapper">
           <select id="project-select">
-            <option value="">Select a repository...</option>
+            <option value="">Root Workspace</option>
           </select>
         </div>
       </section>
 
       <section class="panel">
         <div class="panel-header">
-          <h2>Launch CLI</h2>
-          <span class="hint">Context: <span id="current-ctx">Root</span></span>
+          <h2>Launch Tool</h2>
+          <span class="hint">Target: <span id="current-ctx">Root</span></span>
         </div>
         <div class="cli-grid">
-          <button class="cli-card" data-cmd="claude" data-args="">
+          <button class="cli-card" data-cmd="claude" data-label="Claude">
             <div class="cli-icon claude">C</div>
-            <div class="cli-info"><h3>Claude</h3><p>Anthropic</p></div>
+            <div class="cli-info"><h3>Claude</h3><p>Anthropic AI</p></div>
           </button>
-          <button class="cli-card" data-cmd="gemini" data-args="chat">
+          <button class="cli-card" data-cmd="gemini" data-args="chat" data-label="Gemini">
             <div class="cli-icon gemini">G</div>
-            <div class="cli-info"><h3>Gemini</h3><p>Google</p></div>
+            <div class="cli-info"><h3>Gemini</h3><p>Google AI</p></div>
           </button>
-          <button class="cli-card" data-cmd="bash" data-args="">
+          <button class="cli-card" data-cmd="bash" data-label="Bash">
             <div class="cli-icon bash">B</div>
-            <div class="cli-info"><h3>Bash</h3><p>Terminal</p></div>
+            <div class="cli-info"><h3>Bash</h3><p>Linux Shell</p></div>
           </button>
-          <button class="cli-card" data-cmd="git" data-args="status">
+          <button class="cli-card" data-cmd="git" data-args="status" data-label="Git">
             <div class="cli-icon git">G</div>
-            <div class="cli-info"><h3>Git</h3><p>Source</p></div>
+            <div class="cli-info"><h3>Git</h3><p>Version Control</p></div>
           </button>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Terminal Screen -->
+  <!-- Terminal View -->
   <div id="terminal-screen" class="screen hidden">
     <header class="term-header">
-      <button id="back-btn" class="icon-btn">←</button>
+      <button id="back-to-launcher" class="icon-btn">←</button>
       <h2 id="term-title">Terminal</h2>
-      <div class="term-actions">
-        <button id="clear-btn" class="text-btn">Clear</button>
-      </div>
+      <button id="clear-term-btn" class="icon-btn">🧹</button>
     </header>
-    
+
     <div id="terminal-container"></div>
 
     <!-- Mobile Helper Bar -->
@@ -101,7 +97,7 @@
       <button class="helper-btn" data-key="down">↓</button>
       <button class="helper-btn" data-key="left">←</button>
       <button class="helper-btn" data-key="right">→</button>
-      <button class="helper-btn" data-key="ctrl-c">^C</button>
+      <button class="helper-btn" data-key="/">/</button>
     </div>
   </div>
 

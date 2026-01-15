@@ -34,9 +34,51 @@ body, html {
 
 .hidden { display: none !important; }
 
-/* Dashboard UI */
+/* Login Styling */
+.login-container {
+  margin: auto;
+  width: 90%;
+  max-width: 360px;
+  text-align: center;
+  position: relative;
+}
+
+.glow-orb {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 200px; height: 200px;
+  background: var(--accent);
+  filter: blur(80px);
+  opacity: 0.2;
+  transform: translate(-50%, -50%);
+  z-index: -1;
+}
+
+.login-container input {
+  width: 100%;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: white;
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.login-container button {
+  width: 100%;
+  padding: 16px;
+  background: var(--accent);
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+/* Dashboard Header */
 .main-header, .term-header {
-  padding: var(--safe-top) 20px 16px;
+  padding: calc(var(--safe-top) + 10px) 20px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -44,6 +86,9 @@ body, html {
   background: rgba(11, 16, 32, 0.8);
   backdrop-filter: blur(10px);
 }
+
+.brand h1 { margin: 0; font-size: 18px; }
+.status-badge { font-size: 10px; color: #10b981; text-transform: uppercase; letter-spacing: 1px; }
 
 .dashboard-content {
   flex: 1;
@@ -62,29 +107,51 @@ body, html {
   border: 1px solid var(--border);
 }
 
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.panel-header h2 { margin: 0; font-size: 14px; color: var(--text-muted); text-transform: uppercase; }
+
+.select-wrapper select {
+  width: 100%;
+  background: var(--bg);
+  color: white;
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 16px;
+}
+
 .cli-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
+}
+
+@media (min-width: 600px) {
+  .cli-grid { grid-template-columns: 1fr 1fr; }
 }
 
 .cli-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 16px;
   padding: 16px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   text-align: left;
   color: inherit;
-  transition: transform 0.1s;
 }
 
-.cli-card:active { transform: scale(0.96); background: var(--surface-active); }
+.cli-card:active { background: var(--surface-active); transform: scale(0.98); }
 
 .cli-icon {
-  width: 44px; height: 44px;
+  width: 48px; height: 48px;
   border-radius: 12px;
   display: flex;
   align-items: center;
@@ -95,21 +162,23 @@ body, html {
 
 .claude { background: #d97757; }
 .gemini { background: #4f8cff; }
-.bash { background: #27272a; }
+.bash { background: #3f3f46; }
 .git { background: #f1502f; }
 
-/* Terminal Container */
+.cli-info h3 { margin: 0; font-size: 16px; }
+.cli-info p { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+/* Terminal */
 #terminal-container {
   flex: 1;
   background: #000;
-  padding: 8px;
+  padding: 10px;
   overflow: hidden;
 }
 
-/* Mobile Helper Bar */
 .mobile-helper-bar {
   display: flex;
-  background: #161b2c;
+  background: #000;
   padding: 8px;
   gap: 6px;
   overflow-x: auto;
@@ -119,27 +188,19 @@ body, html {
 
 .helper-btn {
   flex: 0 0 auto;
-  min-width: 50px;
+  min-width: 54px;
   height: 40px;
-  background: var(--surface-active);
-  border: none;
+  background: #1e293b;
+  border: 1px solid #334155;
   border-radius: 8px;
   color: white;
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 11px;
+  font-weight: bold;
 }
 
-.helper-btn:active { background: var(--accent); }
+.helper-btn:active, .helper-btn.active { background: var(--accent); border-color: white; }
 
-/* Standard Components */
-input, select, button { font-family: inherit; }
-.icon-btn { background: none; border: none; color: white; font-size: 24px; padding: 8px; }
-.text-btn { background: var(--surface-active); border: none; color: var(--accent); padding: 6px 12px; border-radius: 8px; font-weight: 600; }
-.status-badge { font-size: 10px; color: #4ade80; text-transform: uppercase; font-weight: bold; }
-
-/* Terminal Styles */
-.xterm-viewport::-webkit-scrollbar { width: 4px; }
-.xterm-viewport::-webkit-scrollbar-thumb { background: var(--surface-active); }
+/* Utilities */
+.text-btn { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 14px; }
+.icon-btn { background: none; border: none; color: white; font-size: 20px; padding: 10px; }
+.error { color: #ff4f4f; font-size: 14px; margin-top: 10px; }

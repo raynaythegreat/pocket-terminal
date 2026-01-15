@@ -3,7 +3,7 @@ let term;
 let fitAddon;
 let authToken = null;
 let currentProjectId = null;
-let ctrlPressed = false;
+let ctrlActive = false;
 
 // DOM Elements
 const loginScreen = document.getElementById('login-screen');
@@ -12,7 +12,12 @@ const terminalScreen = document.getElementById('terminal-screen');
 const projectSelect = document.getElementById('project-select');
 const ctxLabel = document.getElementById('current-ctx');
 
-// Auth Logic
+// Initialize App
+function init() {
+  const savedPass = sessionStorage.getItem('pocket_pass');
+  if (savedPass) connect(savedPass);
+}
+
 document.getElementById('login-form').onsubmit = (e) => {
   e.preventDefault();
   const password = document.getElementById('password').value;
@@ -32,12 +37,13 @@ function connect(password) {
 
     if (data.type === 'authenticated') {
       authToken = password;
+      sessionStorage.setItem('pocket_pass', password);
       loginScreen.classList.add('hidden');
       launcherScreen.classList.remove('hidden');
       loadProjects();
     } else if (data.type === 'error') {
       document.getElementById('login-error').innerText = data.message;
-      if (socket) socket.close();
+      sessionStorage.removeItem('pocket_pass');
     } else if (data.type === 'data') {
       if (term) term.write(data.data);
     } else if (data.type === 'exit') {
@@ -48,10 +54,8 @@ function connect(password) {
   socket.onclose = () => {
     document.getElementById('connection-status').innerText = 'Disconnected';
     document.getElementById('connection-status').style.color = 'red';
-    // Attempt auto-reconnect if we were already authenticated
-    if (authToken) {
-      setTimeout(() => connect(authToken), 2000);
-    }
+    // Auto-reconnect
+    if (authToken) setTimeout(() => connect(authToken), 2000);
   };
 }
 
@@ -62,7 +66,7 @@ async function loadProjects() {
     });
     const projects = await res.json();
     
-    projectSelect.innerHTML = '<option value="">(Root Projects Folder)</option>';
+    projectSelect.innerHTML = '<option value="">Root Workspace</option>';
     projects.forEach(p => {
       const opt = document.createElement('option');
       opt.value = p;
@@ -80,14 +84,8 @@ projectSelect.onchange = (e) => {
   ctxLabel.innerText = currentProjectId || 'Root';
 };
 
-document.querySelectorAll('.cli-card').forEach(card => {
-  card.onclick = () => {
-    startTerminal(card.dataset.cmd, card.dataset.args ? [card.dataset.args] : []);
-  };
-});
-
 document.getElementById('clone-repo-btn').onclick = async () => {
-  const url = prompt('GitHub Repository URL:');
+  const url = prompt('GitHub Repo URL (HTTPS):');
   if (!url) return;
   
   try {
@@ -96,18 +94,21 @@ document.getElementById('clone-repo-btn').onclick = async () => {
       headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
       body: JSON.stringify({ url })
     });
-    if (res.ok) loadProjects();
-    else alert('Clone failed.');
-  } catch (err) {
-    alert('Request failed');
-  }
+    if (res.ok) {
+      loadProjects();
+      alert('Cloned successfully!');
+    } else {
+      const msg = await res.text();
+      alert('Error: ' + msg);
+    }
+  } catch (err) { alert('Clone failed'); }
 };
 
 // Terminal Lifecycle
-function startTerminal(command, args = []) {
+function startTerminal(cmd, args = []) {
   launcherScreen.classList.add('hidden');
   terminalScreen.classList.remove('hidden');
-  document.getElementById('term-title').innerText = command;
+  document.getElementById('term-title').innerText = cmd.toUpperCase();
 
   if (!term) {
     term = new Terminal({
@@ -122,26 +123,16 @@ function startTerminal(command, args = []) {
     term.open(document.getElementById('terminal-container'));
     
     term.onData(data => {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'input', data }));
-      }
-    });
-
-    window.addEventListener('resize', () => {
-      fitAddon.fit();
-      socket.send(JSON.stringify({ 
-        type: 'resize', cols: term.cols, rows: term.rows 
-      }));
+      socket.send(JSON.stringify({ type: 'input', data }));
     });
   }
 
-  // Brief delay to ensure container is rendered before fit
   setTimeout(() => {
     fitAddon.fit();
     socket.send(JSON.stringify({
       type: 'spawn',
-      command,
-      args,
+      command: cmd,
+      args: args,
       projectId: currentProjectId,
       cols: term.cols,
       rows: term.rows
@@ -152,34 +143,59 @@ function startTerminal(command, args = []) {
 function exitTerminal() {
   terminalScreen.classList.add('hidden');
   launcherScreen.classList.remove('hidden');
-  if (term) term.clear();
 }
 
-document.getElementById('back-btn').onclick = () => {
+document.getElementById('back-to-launcher').onclick = () => {
   terminalScreen.classList.add('hidden');
   launcherScreen.classList.remove('hidden');
 };
 
-document.getElementById('clear-btn').onclick = () => term && term.clear();
-
-// Mobile Helper Bar Logic
-document.querySelectorAll('.helper-btn').forEach(btn => {
-  btn.onclick = (e) => {
-    const key = btn.dataset.key;
-    if (!term) return;
-
-    switch(key) {
-      case 'tab': term.write('\t'); socket.send(JSON.stringify({type:'input', data:'\t'})); break;
-      case 'esc': term.write('\x1b'); socket.send(JSON.stringify({type:'input', data:'\x1b'})); break;
-      case 'ctrl': 
-        ctrlPressed = !ctrlPressed;
-        btn.style.background = ctrlPressed ? 'var(--accent)' : '';
-        break;
-      case 'up': socket.send(JSON.stringify({type:'input', data:'\x1b[A'})); break;
-      case 'down': socket.send(JSON.stringify({type:'input', data:'\x1b[B'})); break;
-      case 'left': socket.send(JSON.stringify({type:'input', data:'\x1b[D'})); break;
-      case 'right': socket.send(JSON.stringify({type:'input', data:'\x1b[C'})); break;
-      case 'ctrl-c': socket.send(JSON.stringify({type:'input', data:'\x03'})); break;
-    }
+document.querySelectorAll('.cli-card').forEach(card => {
+  card.onclick = () => {
+    const args = card.dataset.args ? card.dataset.args.split(' ') : [];
+    startTerminal(card.dataset.cmd, args);
   };
 });
+
+// Mobile Helper Keys
+document.querySelectorAll('.helper-btn').forEach(btn => {
+  btn.onclick = () => {
+    const key = btn.dataset.key;
+    if (key === 'ctrl') {
+      ctrlActive = !ctrlActive;
+      btn.classList.toggle('active', ctrlActive);
+      return;
+    }
+
+    let sequence = '';
+    switch(key) {
+      case 'tab': sequence = '\t'; break;
+      case 'esc': sequence = '\x1b'; break;
+      case 'up': sequence = '\x1b[A'; break;
+      case 'down': sequence = '\x1b[B'; break;
+      case 'left': sequence = '\x1b[D'; break;
+      case 'right': sequence = '\x1b[C'; break;
+      case '/': sequence = '/'; break;
+    }
+
+    if (ctrlActive && key.length === 1) {
+      // Handle Ctrl+Key combinations
+      const code = key.toUpperCase().charCodeAt(0) - 64;
+      sequence = String.fromCharCode(code);
+      ctrlActive = false;
+      document.querySelector('[data-key="ctrl"]').classList.remove('active');
+    }
+
+    socket.send(JSON.stringify({ type: 'input', data: sequence }));
+    term.focus();
+  };
+});
+
+window.onresize = () => {
+  if (fitAddon) {
+    fitAddon.fit();
+    socket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
+  }
+};
+
+init();
