@@ -74,6 +74,25 @@ function revokeSession(sessions, token) {
 }
 
 /**
+ * Clean up expired sessions from the sessions map.
+ * @param {Map<string, { expiresAt: number }>} sessions
+ * @returns {number} Number of sessions cleaned up
+ */
+function cleanupExpiredSessions(sessions) {
+  const now = Date.now();
+  let cleaned = 0;
+  
+  for (const [token, session] of sessions.entries()) {
+    if (now > session.expiresAt) {
+      sessions.delete(token);
+      cleaned++;
+    }
+  }
+  
+  return cleaned;
+}
+
+/**
  * Determine password configuration based on environment.
  *
  * Modes:
@@ -96,14 +115,16 @@ function buildPasswordConfig(env, logger) {
     }
     return {
       mode: "env",
-      passwordHash: hashPassword(envPassword),
+      passwordHash: hashPassword(envPassword.trim()),
     };
   }
 
   if (isProd) {
+    // In production, we require TERMINAL_PASSWORD to be set
     if (logger && typeof logger.warn === "function") {
       logger.warn(
-        "TERMINAL_PASSWORD is not set in production. Authentication is misconfigured; all logins will be rejected."
+        "CRITICAL: TERMINAL_PASSWORD not set in production environment. " +
+        "Authentication is disabled until this is configured properly."
       );
     }
     return {
@@ -112,13 +133,15 @@ function buildPasswordConfig(env, logger) {
     };
   }
 
-  // Non-production fallback
+  // Development/testing: use default password with warning
   const defaultPassword = "Superprimitive69!";
   if (logger && typeof logger.warn === "function") {
     logger.warn(
-      'TERMINAL_PASSWORD not set. Using default development password "Superprimitive69!". Do NOT use this in production.'
+      `Using default password "${defaultPassword}" in ${nodeEnv} mode. ` +
+      "Set TERMINAL_PASSWORD environment variable for production."
     );
   }
+  
   return {
     mode: "default",
     passwordHash: hashPassword(defaultPassword),
@@ -131,5 +154,6 @@ module.exports = {
   createSession,
   isValidSession,
   revokeSession,
+  cleanupExpiredSessions,
   buildPasswordConfig,
 };

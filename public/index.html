@@ -3,10 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <title>Pocket Terminal</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#09090b" />
     <link rel="stylesheet" href="/style.css" />
+    <!-- XTerm.js CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   </head>
   <body>
+    <!-- Connection Status Banner -->
+    <div id="connection-status" class="connection-banner hidden">
+      <div class="connection-content">
+        <span id="connection-text">Connecting...</span>
+        <button id="reconnect-btn" class="reconnect-btn hidden">Retry</button>
+      </div>
+    </div>
+
     <!-- Login Screen -->
     <div id="login-screen" class="screen">
       <div class="login-container">
@@ -22,6 +35,7 @@
             type="password"
             autocomplete="current-password"
             placeholder="Enter terminal password"
+            inputmode="text"
           />
           <button
             id="login-button"
@@ -100,7 +114,7 @@
               onclick="launchCLI('gemini')"
             >
               <h4>Gemini CLI</h4>
-              <p class="text-xs">Google Gemini assistant</p>
+              <p class="text-xs">Google's AI coding assistant</p>
             </div>
 
             <div
@@ -108,8 +122,8 @@
               data-tool-id="copilot"
               onclick="launchCLI('copilot')"
             >
-              <h4>Copilot CLI</h4>
-              <p class="text-xs">GitHub Copilot</p>
+              <h4>GitHub Copilot</h4>
+              <p class="text-xs">AI pair programmer</p>
             </div>
 
             <div
@@ -117,8 +131,8 @@
               data-tool-id="kilocode"
               onclick="launchCLI('kilocode')"
             >
-              <h4>Kilocode</h4>
-              <p class="text-xs">Kilocode CLI</p>
+              <h4>Kilocode CLI</h4>
+              <p class="text-xs">Advanced coding assistant</p>
             </div>
 
             <div
@@ -126,8 +140,8 @@
               data-tool-id="codex"
               onclick="launchCLI('codex')"
             >
-              <h4>Codex</h4>
-              <p class="text-xs">OpenAI Codex</p>
+              <h4>OpenAI Codex</h4>
+              <p class="text-xs">OpenAI's code model</p>
             </div>
 
             <div
@@ -135,8 +149,8 @@
               data-tool-id="grok"
               onclick="launchCLI('grok')"
             >
-              <h4>Grok</h4>
-              <p class="text-xs">Grok CLI</p>
+              <h4>Grok CLI</h4>
+              <p class="text-xs">X.ai's assistant</p>
             </div>
           </div>
         </section>
@@ -146,31 +160,30 @@
     <!-- Terminal Screen -->
     <div id="terminal-screen" class="screen hidden">
       <header class="terminal-header">
-        <button
-          id="back-to-launcher"
-          class="secondary-btn btn-sm"
-          type="button"
-        >
-          Back
-        </button>
-        <div class="terminal-header-center">
-          <span id="terminal-tool-label" class="terminal-title">Shell</span>
-          <span id="terminal-status" class="terminal-status text-xs text-muted">
-            Idle
-          </span>
+        <div class="terminal-header-left">
+          <button id="back-to-launcher" class="back-btn" type="button" aria-label="Back to launcher">
+            ←
+          </button>
+          <div class="terminal-title">
+            <h3 id="terminal-tool-name">Terminal</h3>
+            <p class="text-xs text-muted" id="terminal-status">Connected</p>
+          </div>
         </div>
-        <button id="logout-button-terminal" class="secondary-btn btn-sm">
-          Logout
-        </button>
+        <div class="terminal-header-right">
+          <button id="logout-button-terminal" class="secondary-btn btn-sm" type="button">
+            Logout
+          </button>
+        </div>
       </header>
+
       <main class="terminal-main">
-        <div id="terminal-container"></div>
+        <div id="terminal-container" class="terminal-container"></div>
       </main>
     </div>
 
-    <!-- Toast -->
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
+    <!-- XTerm.js JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="/terminal.js"></script>
   </body>
 </html>
