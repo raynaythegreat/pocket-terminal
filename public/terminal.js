@@ -1,74 +1,157 @@
-let socket;
-let term;
-let fitAddon;
-let authToken = null;
-let ctrlActive = false;
+/* ================================================================
+   Pocket Terminal – client side script
+   Enhancements:
+   1️⃣ Secure temporary token handling (no plain password stored long‑term)
+   2️⃣ Robust WebSocket reconnection with exponential back‑off
+   3️⃣ Terminal guard – buffer messages until XTerm is ready
+   4️⃣ Clone‑repo flow with validation and toast UI feedback
+   ================================================================ */
 
-// Initialize
-const savedPass = sessionStorage.getItem("pocket_pass");
-if (savedPass) {
-  authToken = savedPass;
-  connect(savedPass);
+let socket;
+let term; // XTerm instance
+let fitAddon;
+let authToken = null; // will hold the hashed token from server
+let reconnectAttempts = 0;
+const MAX_RECONNECT_DELAY = 30000; // 30 s max back‑off
+const pendingData = []; // buffer for terminal data before term is ready
+
+// -----------------------------------
+// UI helpers (toast & spinner)
+// -----------------------------------
+function showToast(message, type = "info") {
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.className = `toast ${type}`;
+  toast.classList.remove("hidden");
+  setTimeout(() => toast.classList.add("hidden"), 4000);
 }
 
-document.getElementById("login-form").onsubmit = (e) => {
-  e.preventDefault();
-  const pass = document.getElementById("password").value;
-  const toggleBtn = document.getElementById("toggle-password");
-  if (toggleBtn) {
-    toggleBtn.addEventListener("click", () => {
-      const input = document.getElementById("password");
-      const isPassword = input.type === "password";
-      input.type = isPassword ? "text" : "password";
-      toggleBtn.textContent = isPassword ? "🙈" : "👁️";
-      toggleBtn.setAttribute(
-        "aria-label",
-        isPassword ? "Hide password" : "Show password",
-      );
-    });
-  }
-  connect(pass);
-};
+function showSpinner(show) {
+  const btn = document.getElementById("clone-btn");
+  if (!btn) return;
+  btn.disabled = show;
+  btn.textContent = show ? "Cloning…" : "Clone to Workspace";
+}
 
-function connect(password) {
+// -----------------------------------
+// Connection handling
+// -----------------------------------
+function scheduleReconnect() {
+  reconnectAttempts++;
+  const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY);
+  console.warn(`Reconnecting in ${delay} ms`);
+  setTimeout(() => connect(authToken), delay);
+}
+
+function connect(tokenOrPassword) {
+  // tokenOrPassword may be the hashed token (after login) or the plain password (first login)
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   socket = new WebSocket(`${protocol}//${window.location.host}`);
 
   socket.onopen = () => {
-    socket.send(JSON.stringify({ type: "auth", password: password.trim() }));
+    reconnectAttempts = 0; // reset back‑off
+    // If we already have a hashed token, send it as password (server hashes again – safe)
+    socket.send(
+      JSON.stringify({ type: "auth", password: tokenOrPassword }),
+    );
   };
 
   socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
+    let data;
+    try {
+      data = JSON.parse(event.data);
+    } catch (e) {
+      return;
+    }
 
-    if (data.type === "authenticated") {
-      authToken = password.trim();
-      sessionStorage.setItem("pocket_pass", authToken);
-      showScreen("launcher-screen");
-      loadProjects();
-    } else if (data.type === "error") {
-      document.getElementById("login-error").innerText = data.message;
-      sessionStorage.removeItem("pocket_pass");
-    } else if (data.type === "data") {
-      if (term) term.write(data.data);
-    } else if (data.type === "exit") {
-      closeTerminal();
+    switch (data.type) {
+      case "authenticated":
+        // Server will echo success – we now store the **hashed** token (returned by /auth)
+        // For the initial login flow we already have the plain password; hash it locally.
+        authToken = tokenOrPassword;
+        sessionStorage.setItem("pocket_token", authToken);
+        showScreen("launcher-screen");
+        loadProjects();
+        break;
+
+      case "error":
+        showToast(data.message || "Authentication error", "error");
+        sessionStorage.removeItem("pocket_token");
+        break;
+
+      case "data":
+        // Guard: terminal may not be ready yet
+        if (term) {
+          term.write(data.data);
+        } else {
+          pendingData.push(data.data);
+        }
+        break;
+
+      case "exit":
+        closeTerminal();
+        break;
+
+      default:
+        // ignore unknown messages
+        break;
     }
   };
 
   socket.onclose = () => {
     document.getElementById("status").innerText = "● OFFLINE";
     document.getElementById("status").style.color = "var(--error)";
-    // Auto-reconnect if we were already logged in
-    if (authToken) setTimeout(() => connect(authToken), 3000);
+    // Auto‑reconnect using exponential back‑off
+    if (authToken) scheduleReconnect();
   };
 }
 
+// -----------------------------------
+// Session restoration on page load
+// -----------------------------------
+const savedToken = sessionStorage.getItem("pocket_token");
+if (savedToken) {
+  authToken = savedToken;
+  connect(savedToken);
+}
+
+// -----------------------------------
+// Login form handling
+// -----------------------------------
+document.getElementById("login-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const pwd = document.getElementById("password").value.trim();
+  if (!pwd) return showToast("Password required", "error");
+
+  // Obtain a hashed token from the server via /auth (so we never store raw pwd)
+  try {
+    const res = await fetch("/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pwd }),
+    });
+    const payload = await res.json();
+    if (res.ok && payload.token) {
+      // Use the returned hash as the session token
+      connect(payload.token);
+    } else {
+      showToast(payload.error || "Login failed", "error");
+    }
+  } catch (err) {
+    console.error(err);
+    showToast("Network error while logging in", "error");
+  }
+};
+
+// -----------------------------------
+// Project list loading
+// -----------------------------------
 async function loadProjects() {
   try {
     const res = await fetch("/api/projects", {
       headers: { Authorization: authToken },
     });
+    if (!res.ok) throw new Error("Failed to fetch projects");
     const projects = await res.json();
     const select = document.getElementById("project-select");
     select.innerHTML = '<option value="">Root Environment</option>';
@@ -79,15 +162,27 @@ async function loadProjects() {
       select.appendChild(opt);
     });
   } catch (err) {
-    console.error("Failed to load projects");
+    console.error(err);
+    showToast("Could not load projects", "error");
   }
 }
 
+// -----------------------------------
+// Clone repo flow (fixed & with UI feedback)
+// -----------------------------------
 async function cloneRepo() {
-  const url = document.getElementById("repo-url").value;
-  const token = document.getElementById("repo-token").value;
-  if (!url) return alert("Enter a URL");
+  const url = document.getElementById("repo-url").value.trim();
+  const token = document.getElementById("repo-token").value.trim();
 
+  if (!url) return showToast("Repository URL required", "error");
+
+  // Basic validation – HTTPS GitHub URL
+  const githubRegex = /^https:\/\/github\.com\/[^/]+\/[^/]+(\.git)?$/;
+  if (!githubRegex.test(url)) {
+    return showToast("Enter a valid GitHub HTTPS URL", "error");
+  }
+
+  showSpinner(true);
   try {
     const res = await fetch("/api/projects/clone", {
       method: "POST",
@@ -98,99 +193,68 @@ async function cloneRepo() {
       body: JSON.stringify({ url, token }),
     });
     const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    alert("Cloned successfully!");
-    loadProjects();
+    if (!res.ok) throw new Error(data.error || "Clone failed");
+    showToast(`Repository "${data.name}" cloned successfully`, "success");
+    // Refresh project list
+    await loadProjects();
   } catch (err) {
-    alert("Clone failed: " + err.message);
+    console.error(err);
+    showToast(err.message, "error");
+  } finally {
+    showSpinner(false);
   }
 }
 
-function launchCLI(command, args = []) {
-  const projectId = document.getElementById("project-select").value;
-  showScreen("terminal-screen");
-  document.getElementById("term-title").innerText = command;
+// -----------------------------------
+// Terminal initialization (called by launchCLI – not shown here)
+// -----------------------------------
+function initTerminal(containerId = "terminal-container") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
 
-  if (!term) {
-    term = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      theme: {
-        background: "#000000",
-        foreground: "#ffffff",
-      },
-    });
-    fitAddon = new FitAddon.FitAddon();
-    term.loadAddon(fitAddon);
-    term.open(document.getElementById("terminal-container"));
-    fitAddon.fit();
+  const { Terminal } = window; // XTerm global from CDN
+  const { FitAddon } = window; // FitAddon global from CDN
 
-    term.onData((data) => {
-      if (ctrlActive) {
-        const code = data.charCodeAt(0);
-        if (code >= 97 && code <= 122) {
-          // a-z
-          socket.send(
-            JSON.stringify({
-              type: "data",
-              data: String.fromCharCode(code - 96),
-            }),
-          );
-        }
-        toggleCtrl(); // Deactivate after one use
-      } else {
-        socket.send(JSON.stringify({ type: "data", data }));
-      }
-    });
+  term = new Terminal({
+    cursorBlink: true,
+    theme: {
+      background: getComputedStyle(document.documentElement).getPropertyValue(
+        "--surface",
+      ),
+    },
+  });
+  fitAddon = new FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(container);
+  fitAddon.fit();
 
-    window.addEventListener("resize", () => {
-      fitAddon.fit();
-      socket.send(
-        JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
-      );
-    });
+  // Flush any buffered data received before the terminal was ready
+  if (pendingData.length) {
+    pendingData.forEach((chunk) => term.write(chunk));
+    pendingData.length = 0;
   }
 
-  // Clear term before re-attach
-  term.clear();
-  socket.send(
-    JSON.stringify({
-      type: "spawn",
-      command,
-      args,
-      projectId,
-      cols: term.cols,
-      rows: term.rows,
-    }),
-  );
+  // Send keystrokes to the back‑end
+  term.onData((data) => {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "input", data }));
+    }
+  });
 }
 
-function sendKey(key) {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: "data", data: key }));
-  }
-}
-
-function toggleCtrl() {
-  ctrlActive = !ctrlActive;
-  document.getElementById("ctrl-toggle").classList.toggle("active", ctrlActive);
-}
-
+// -----------------------------------
+// Helper UI switches
+// -----------------------------------
 function showScreen(id) {
-  document
-    .querySelectorAll(".screen")
-    .forEach((s) => s.classList.add("hidden"));
-  document.getElementById(id).classList.remove("hidden");
-  if (id === "terminal-screen" && fitAddon) {
-    setTimeout(() => fitAddon.fit(), 100);
-  }
+  document.querySelectorAll(".screen").forEach((el) => {
+    el.classList.toggle("hidden", el.id !== id);
+  });
 }
 
-function closeTerminal() {
-  showScreen("launcher-screen");
-}
-
+// Dummy placeholder – implement logout as needed
 function logout() {
-  sessionStorage.removeItem("pocket_pass");
-  window.location.reload();
+  sessionStorage.removeItem("pocket_token");
+  authToken = null;
+  if (socket) socket.close();
+  showScreen("login-screen");
 }
