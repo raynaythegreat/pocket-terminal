@@ -1,23 +1,34 @@
-/* ================================================================
-   Pocket Terminal – client side script
-   Enhancements:
-   1️⃣ Secure temporary token handling (no plain password stored long‑term)
-   2️⃣ Robust WebSocket reconnection with exponential back‑off
-   3️⃣ Terminal guard – buffer messages until XTerm is ready
-   4️⃣ Clone‑repo flow with validation and toast UI feedback
-   ================================================================ */
-
 let socket;
-let term; // XTerm instance
+let term;
 let fitAddon;
-let authToken = null; // will hold the hashed token from server
+let authToken = null;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_DELAY = 30000; // 30 s max back‑off
-const pendingData = []; // buffer for terminal data before term is ready
+const MAX_RECONNECT_DELAY = 30000;
 
-// -----------------------------------
-// UI helpers (toast & spinner)
-// -----------------------------------
+// Terminal Theme Definition
+const terminalTheme = {
+  background: '#000000',
+  foreground: '#fafafa',
+  cursor: '#6366f1',
+  selection: 'rgba(99, 102, 241, 0.3)',
+  black: '#09090b',
+  red: '#ef4444',
+  green: '#10b981',
+  yellow: '#f59e0b',
+  blue: '#3b82f6',
+  magenta: '#8b5cf6',
+  cyan: '#06b6d4',
+  white: '#fafafa',
+  brightBlack: '#71717a',
+  brightRed: '#f87171',
+  brightGreen: '#34d399',
+  brightYellow: '#fbbf24',
+  brightBlue: '#60a5fa',
+  brightMagenta: '#a78bfa',
+  brightCyan: '#22d3ee',
+  brightWhite: '#ffffff'
+};
+
 function showToast(message, type = "info") {
   const toast = document.getElementById("toast");
   toast.textContent = message;
@@ -26,235 +37,184 @@ function showToast(message, type = "info") {
   setTimeout(() => toast.classList.add("hidden"), 4000);
 }
 
-function showSpinner(show) {
-  const btn = document.getElementById("clone-btn");
-  if (!btn) return;
-  btn.disabled = show;
-  btn.textContent = show ? "Cloning…" : "Clone to Workspace";
-}
-
-// -----------------------------------
-// Connection handling
-// -----------------------------------
-function scheduleReconnect() {
-  reconnectAttempts++;
-  const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY);
-  console.warn(`Reconnecting in ${delay} ms`);
-  setTimeout(() => connect(authToken), delay);
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+  
+  if (id === 'terminal-screen' && term) {
+    setTimeout(() => fitAddon.fit(), 50);
+  }
 }
 
 function connect(tokenOrPassword) {
-  // tokenOrPassword may be the hashed token (after login) or the plain password (first login)
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   socket = new WebSocket(`${protocol}//${window.location.host}`);
 
   socket.onopen = () => {
-    reconnectAttempts = 0; // reset back‑off
-    // If we already have a hashed token, send it as password (server hashes again – safe)
-    socket.send(
-      JSON.stringify({ type: "auth", password: tokenOrPassword }),
-    );
+    reconnectAttempts = 0;
+    socket.send(JSON.stringify({ type: "auth", password: tokenOrPassword }));
+    document.getElementById('status-dot').style.background = 'var(--success)';
+    document.getElementById('status-text').textContent = 'CONNECTED';
+  };
+
+  socket.onclose = () => {
+    document.getElementById('status-dot').style.background = 'var(--error)';
+    document.getElementById('status-text').textContent = 'DISCONNECTED';
+    scheduleReconnect();
   };
 
   socket.onmessage = (event) => {
-    let data;
-    try {
-      data = JSON.parse(event.data);
-    } catch (e) {
-      return;
-    }
-
+    const data = JSON.parse(event.data);
     switch (data.type) {
       case "authenticated":
-        // Server will echo success – we now store the **hashed** token (returned by /auth)
-        // For the initial login flow we already have the plain password; hash it locally.
         authToken = tokenOrPassword;
         sessionStorage.setItem("pocket_token", authToken);
         showScreen("launcher-screen");
         loadProjects();
         break;
-
       case "error":
-        showToast(data.message || "Authentication error", "error");
-        sessionStorage.removeItem("pocket_token");
-        break;
-
-      case "data":
-        // Guard: terminal may not be ready yet
-        if (term) {
-          term.write(data.data);
-        } else {
-          pendingData.push(data.data);
+        showToast(data.message, "error");
+        if (data.message.includes("auth")) {
+          sessionStorage.removeItem("pocket_token");
+          showScreen("login-screen");
         }
         break;
-
-      case "exit":
-        closeTerminal();
-        break;
-
-      default:
-        // ignore unknown messages
+      case "data":
+        if (term) term.write(data.data);
         break;
     }
   };
-
-  socket.onclose = () => {
-    document.getElementById("status").innerText = "● OFFLINE";
-    document.getElementById("status").style.color = "var(--error)";
-    // Auto‑reconnect using exponential back‑off
-    if (authToken) scheduleReconnect();
-  };
 }
 
-// -----------------------------------
-// Session restoration on page load
-// -----------------------------------
-const savedToken = sessionStorage.getItem("pocket_token");
-if (savedToken) {
-  authToken = savedToken;
-  connect(savedToken);
+function scheduleReconnect() {
+  reconnectAttempts++;
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+  setTimeout(() => {
+    const savedToken = sessionStorage.getItem("pocket_token");
+    if (savedToken) connect(savedToken);
+  }, delay);
 }
 
-// -----------------------------------
-// Login form handling
-// -----------------------------------
-document.getElementById("login-form").onsubmit = async (e) => {
-  e.preventDefault();
-  const pwd = document.getElementById("password").value.trim();
-  if (!pwd) return showToast("Password required", "error");
-
-  // Obtain a hashed token from the server via /auth (so we never store raw pwd)
-  try {
-    const res = await fetch("/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: pwd }),
-    });
-    const payload = await res.json();
-    if (res.ok && payload.token) {
-      // Use the returned hash as the session token
-      connect(payload.token);
-    } else {
-      showToast(payload.error || "Login failed", "error");
-    }
-  } catch (err) {
-    console.error(err);
-    showToast("Network error while logging in", "error");
-  }
-};
-
-// -----------------------------------
-// Project list loading
-// -----------------------------------
-async function loadProjects() {
-  try {
-    const res = await fetch("/api/projects", {
-      headers: { Authorization: authToken },
-    });
-    if (!res.ok) throw new Error("Failed to fetch projects");
-    const projects = await res.json();
-    const select = document.getElementById("project-select");
-    select.innerHTML = '<option value="">Root Environment</option>';
-    projects.forEach((p) => {
-      const opt = document.createElement("option");
-      opt.value = p;
-      opt.textContent = p;
-      select.appendChild(opt);
-    });
-  } catch (err) {
-    console.error(err);
-    showToast("Could not load projects", "error");
-  }
-}
-
-// -----------------------------------
-// Clone repo flow (fixed & with UI feedback)
-// -----------------------------------
-async function cloneRepo() {
-  const url = document.getElementById("repo-url").value.trim();
-  const token = document.getElementById("repo-token").value.trim();
-
-  if (!url) return showToast("Repository URL required", "error");
-
-  // Basic validation – HTTPS GitHub URL
-  const githubRegex = /^https:\/\/github\.com\/[^/]+\/[^/]+(\.git)?$/;
-  if (!githubRegex.test(url)) {
-    return showToast("Enter a valid GitHub HTTPS URL", "error");
-  }
-
-  showSpinner(true);
-  try {
-    const res = await fetch("/api/projects/clone", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: authToken,
-      },
-      body: JSON.stringify({ url, token }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Clone failed");
-    showToast(`Repository "${data.name}" cloned successfully`, "success");
-    // Refresh project list
-    await loadProjects();
-  } catch (err) {
-    console.error(err);
-    showToast(err.message, "error");
-  } finally {
-    showSpinner(false);
-  }
-}
-
-// -----------------------------------
-// Terminal initialization (called by launchCLI – not shown here)
-// -----------------------------------
-function initTerminal(containerId = "terminal-container") {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-
-  const { Terminal } = window; // XTerm global from CDN
-  const { FitAddon } = window; // FitAddon global from CDN
-
+function initTerminal() {
+  if (term) return;
+  
   term = new Terminal({
     cursorBlink: true,
-    theme: {
-      background: getComputedStyle(document.documentElement).getPropertyValue(
-        "--surface",
-      ),
-    },
+    fontSize: 14,
+    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+    theme: terminalTheme,
+    allowProposedApi: true
   });
-  fitAddon = new FitAddon();
+
+  fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
-  term.open(container);
-  fitAddon.fit();
-
-  // Flush any buffered data received before the terminal was ready
-  if (pendingData.length) {
-    pendingData.forEach((chunk) => term.write(chunk));
-    pendingData.length = 0;
-  }
-
-  // Send keystrokes to the back‑end
+  term.open(document.getElementById("terminal-container"));
+  
   term.onData((data) => {
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ type: "input", data }));
     }
   });
+
+  window.addEventListener("resize", () => fitAddon.fit());
 }
 
-// -----------------------------------
-// Helper UI switches
-// -----------------------------------
-function showScreen(id) {
-  document.querySelectorAll(".screen").forEach((el) => {
-    el.classList.toggle("hidden", el.id !== id);
-  });
+function launchCLI(command, args = []) {
+  const project = document.getElementById("project-select").value;
+  initTerminal();
+  
+  // Clear previous terminal content
+  term.reset();
+  
+  socket.send(JSON.stringify({
+    type: "start",
+    command,
+    args,
+    cwd: project ? `projects/${project}` : undefined
+  }));
+
+  document.getElementById('active-cmd').textContent = command;
+  showScreen("terminal-screen");
 }
 
-// Dummy placeholder – implement logout as needed
+function closeTerminal() {
+  // We don't kill the process immediately to allow background tasks, 
+  // but we hide the overlay
+  showScreen("launcher-screen");
+}
+
+async function loadProjects() {
+  try {
+    const res = await fetch("/api/projects", {
+      headers: { "Authorization": authToken }
+    });
+    const projects = await res.json();
+    const select = document.getElementById("project-select");
+    
+    // Keep root option
+    select.innerHTML = '<option value="">Root Environment</option>';
+    projects.forEach(p => {
+      const opt = document.createElement("option");
+      opt.value = p;
+      opt.textContent = p;
+      select.appendChild(opt);
+    });
+  } catch (e) {
+    console.error("Failed to load projects", e);
+  }
+}
+
+async function cloneRepo() {
+  const url = document.getElementById("repo-url").value;
+  const token = document.getElementById("repo-token").value;
+  const btn = document.getElementById("clone-btn");
+
+  if (!url) return showToast("URL is required", "error");
+
+  btn.disabled = true;
+  btn.textContent = "Cloning...";
+
+  try {
+    const res = await fetch("/api/clone", {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "Authorization": authToken 
+      },
+      body: JSON.stringify({ url, token })
+    });
+
+    if (res.ok) {
+      showToast("Repository cloned successfully", "success");
+      document.getElementById("repo-url").value = "";
+      loadProjects();
+    } else {
+      const err = await res.json();
+      showToast(err.error || "Clone failed", "error");
+    }
+  } catch (e) {
+    showToast("Network error during clone", "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Clone Repository";
+  }
+}
+
 function logout() {
   sessionStorage.removeItem("pocket_token");
-  authToken = null;
-  if (socket) socket.close();
-  showScreen("login-screen");
+  window.location.reload();
 }
+
+// Initialization
+document.getElementById("login-form").onsubmit = (e) => {
+  e.preventDefault();
+  const pwd = document.getElementById("password").value;
+  connect(pwd);
+};
+
+window.onload = () => {
+  const savedToken = sessionStorage.getItem("pocket_token");
+  if (savedToken) {
+    connect(savedToken);
+  }
+};

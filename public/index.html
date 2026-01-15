@@ -16,10 +16,10 @@
   <div id="login-screen" class="screen">
     <div class="login-container">
       <h1>Pocket Terminal</h1>
-      <p>Your Mobile Workspace</p>
+      <p>Secure Mobile Workspace</p>
       <form id="login-form">
         <input type="password" id="password" placeholder="Access Password" required autocomplete="current-password">
-        <button type="submit" class="primary-btn">Unlock</button>
+        <button type="submit" class="primary-btn" style="width: 100%; margin-top: 16px;">Unlock</button>
       </form>
       <span id="login-error" class="error-text"></span>
     </div>
@@ -29,49 +29,74 @@
   <div id="launcher-screen" class="screen hidden">
     <header class="main-header">
       <div>
-        <h1 style="margin:0; font-size: 18px;">Workspace</h1>
-        <span id="status" style="font-size: 10px; color: #10b981; font-weight: 700;">● ONLINE</span>
+        <h2 style="margin:0; font-size: 18px;">Workspace</h2>
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+          <span id="status-dot" style="width: 8px; height: 8px; background: var(--success); border-radius: 50%;"></span>
+          <span id="status-text" class="text-xs" style="color: var(--text-muted); font-weight: 600;">CONNECTED</span>
+        </div>
       </div>
-      <button onclick="logout()" style="background:none; border:none; color:var(--text-muted); font-size: 20px;">✕</button>
+      <button onclick="logout()" style="background: var(--bg-alt); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 10px; font-size: 13px; font-weight: 500;">Logout</button>
     </header>
 
     <main class="dashboard-content">
       <!-- Project Selection -->
       <section class="panel">
-        <span class="panel-title">Active Project</span>
-        <select id="project-select" style="width:100%; padding:12px; border-radius:12px; background:var(--bg-alt); color:var(--text); border:1px solid var(--border);">
-          <option value="">Root Environment</option>
-        </select>
+        <span class="panel-title">Active Environment</span>
+        <div class="card" style="padding: 0; border: none;">
+          <select id="project-select">
+            <option value="">Root Project</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- Quick Launch Grid -->
+      <section class="panel">
+        <span class="panel-title">AI CLI Tools</span>
+        <div class="cli-grid">
+          <div class="cli-card" onclick="launchCLI('claude-code')">
+            <div class="cli-icon icon-claude">C</div>
+            <span class="text-sm">Claude</span>
+          </div>
+          <div class="cli-card" onclick="launchCLI('gemini', ['chat'])">
+            <div class="cli-icon icon-gemini">G</div>
+            <span class="text-sm">Gemini</span>
+          </div>
+          <div class="cli-card" onclick="launchCLI('copilot')">
+            <div class="cli-icon icon-gpt">P</div>
+            <span class="text-sm">Copilot</span>
+          </div>
+          <div class="cli-card" onclick="launchCLI('grok')">
+            <div class="cli-icon icon-grok">x</div>
+            <span class="text-sm">Grok</span>
+          </div>
+        </div>
       </section>
 
       <!-- Clone Repo -->
       <section class="panel">
-        <span class="panel-title">Clone Repository</span>
-        <input type="text" id="repo-url" placeholder="GitHub HTTPS URL" style="margin-bottom:8px; padding:12px; font-size:14px;">
-        <input type="password" id="repo-token" placeholder="Token (Required for Private Repos)" style="margin-bottom:12px; padding:12px; font-size:14px;">
-        <button id="clone-btn" onclick="cloneRepo()" class="primary-btn" style="padding:12px; font-size:14px;">Clone to Workspace</button>
-      </section>
-
-      <!-- Quick Launch -->
-      <section class="panel">
-        <span class="panel-title">Quick Launch</span>
-        <div class="cli-grid">
-          <button class="cli-card" onclick="launchCLI('claude-code')">
-            <div class="cli-icon icon-claude">C</div>
-            <span>Claude</span>
-          </button>
-          <button class="cli-card" onclick="launchCLI('gemini', ['chat'])">
-            <div class="cli-icon icon-gemini">G</div>
-            <span>Gemini</span>
-          </button>
-          <!-- more cards... -->
+        <span class="panel-title">Import Project</span>
+        <div class="card" style="display: flex; flex-direction: column; gap: 12px;">
+          <input type="text" id="repo-url" placeholder="GitHub Repository URL">
+          <input type="password" id="repo-token" placeholder="Personal Access Token (optional)">
+          <button id="clone-btn" onclick="cloneRepo()" class="primary-btn">Clone Repository</button>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Toast container (hidden by default) -->
-  <div id="toast" class="toast hidden" role="alert" aria-live="assertive"></div>
+  <!-- Terminal Screen (Overlay) -->
+  <div id="terminal-screen" class="screen hidden">
+    <div class="terminal-header">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">Terminal</span>
+        <span id="active-cmd" style="font-size: 12px; padding: 2px 8px; background: var(--bg-alt); border-radius: 4px; color: var(--primary);">bash</span>
+      </div>
+      <button onclick="closeTerminal()" style="background: var(--error); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px;">✕</button>
+    </div>
+    <div id="terminal-container"></div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
 
   <script src="terminal.js"></script>
 </body>
