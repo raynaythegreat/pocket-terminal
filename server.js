@@ -22,14 +22,48 @@ if (process.env.TERMINAL_PASSWORD === undefined) {
   console.warn("⚠️ WARNING: TERMINAL_PASSWORD not set. Using default fallback.");
 }
 
-const PASSWORD_HASH = crypto
-  .createHash("sha256")
-  .update(RAW_PASSWORD)
-  .digest("hex");
+const PASSWORD_HASH = crypto.createHash("sha256").update(RAW_PASSWORD).digest("hex");
 
 function hashPassword(pwd) {
-  return crypto.createHash("sha256").update(pwd.trim()).digest("hex");
+  return crypto.createHash("sha256").update(String(pwd || "").trim()).digest("hex");
 }
+
+// ---------------------------------------------------------------------------
+// 1b️⃣ Session token handling (do NOT use PASSWORD_HASH as a token)
+// ---------------------------------------------------------------------------
+const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 1000 * 60 * 60 * 24 * 7); // 7 days
+const sessions = new Map(); // token -> { expiresAt: number }
+
+function createSession() {
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = Date.now() + SESSION_TTL_MS;
+  sessions.set(token, { expiresAt });
+  return token;
+}
+
+function isValidSession(token) {
+  if (!token) return false;
+  const entry = sessions.get(token);
+  if (!entry) return false;
+  if (Date.now() > entry.expiresAt) {
+    sessions.delete(token);
+    return false;
+  }
+  return true;
+}
+
+function revokeSession(token) {
+  if (!token) return;
+  sessions.delete(token);
+}
+
+// periodic cleanup
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, entry] of sessions.entries()) {
+    if (now > entry.expiresAt) sessions.delete(token);
+  }
+}, 1000 * 60 * 15).unref();
 
 // ---------------------------------------------------------------------------
 // 2️⃣ Project directory setup
@@ -43,25 +77,28 @@ app.use(express.static("public"));
 app.use(express.json({ limit: "1mb" }));
 
 // ---------------------------------------------------------------------------
-// 3️⃣ Auth endpoint
+// 3️⃣ Auth endpoints
 // ---------------------------------------------------------------------------
 app.post("/auth", (req, res) => {
-  const { password } = req.body;
+  const { password } = req.body || {};
   if (password && hashPassword(password) === PASSWORD_HASH) {
-    // Return the hash as the session token
-    res.json({ success: true, token: PASSWORD_HASH });
+    const token = createSession();
+    res.json({ success: true, token, expiresInMs: SESSION_TTL_MS });
   } else {
-    res.status(401).json({ error: "Invalid password" });
+    res.status(401).json({ success: false, error: "Invalid password" });
   }
 });
 
+app.post("/logout", (req, res) => {
+  const token = String(req.headers.authorization || "").trim();
+  if (token) revokeSession(token);
+  res.json({ success: true });
+});
+
 const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization;
-  if (token && token.trim() === PASSWORD_HASH) {
-    next();
-  } else {
-    res.status(401).json({ error: "Unauthorized" });
-  }
+  const token = String(req.headers.authorization || "").trim();
+  if (isValidSession(token)) return next();
+  return res.status(401).json({ error: "Unauthorized" });
 };
 
 // ---------------------------------------------------------------------------
@@ -80,84 +117,155 @@ app.get("/api/projects", authMiddleware, (req, res) => {
 });
 
 app.post("/api/clone", authMiddleware, (req, res) => {
-  const { repoUrl } = req.body;
+  const { repoUrl } = req.body || {};
   if (!repoUrl) return res.status(400).json({ error: "Repo URL required" });
 
-  const folderName = repoUrl.split("/").pop().replace(".git", "");
+  const folderName = String(repoUrl).split("/").pop().replace(".git", "");
   const targetDir = path.join(PROJECTS_DIR, folderName);
 
-  exec(`git clone ${repoUrl} ${targetDir}`, (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ success: true, folderName });
+  if (!folderName || folderName.includes("..") || folderName.includes("/") || folderName.includes("\\")) {
+    return res.status(400).json({ error: "Invalid repo URL" });
+  }
+
+  if (fs.existsSync(targetDir)) {
+    return res.status(409).json({ error: "Project already exists" });
+  }
+
+  exec(`git clone ${repoUrl} "${targetDir}"`, { cwd: PROJECTS_DIR }, (err, stdout, stderr) => {
+    if (err) {
+      console.error(stderr || stdout || err);
+      return res.status(500).json({ error: "Clone failed" });
+    }
+    res.json({ success: true, folder: folderName });
   });
 });
 
 // ---------------------------------------------------------------------------
-// 5️⃣ Terminal logic (WebSocket)
+// 5️⃣ WebSocket: authenticated PTY sessions
 // ---------------------------------------------------------------------------
-wss.on("connection", (ws) => {
-  let shell = null;
-  let authenticated = false;
+function safeCwd(projectName) {
+  if (!projectName) return __dirname;
+  const cleaned = String(projectName);
+  if (cleaned.includes("..") || cleaned.includes("/") || cleaned.includes("\\")) return __dirname;
+  const p = path.join(PROJECTS_DIR, cleaned);
+  if (!p.startsWith(PROJECTS_DIR)) return __dirname;
+  if (!fs.existsSync(p) || !fs.statSync(p).isDirectory()) return __dirname;
+  return p;
+}
 
-  ws.on("message", (message) => {
-    let data;
+wss.on("connection", (ws) => {
+  ws.isAuthed = false;
+  ws.ptyProcess = null;
+
+  const killPty = () => {
     try {
-      data = JSON.parse(message);
+      if (ws.ptyProcess) ws.ptyProcess.kill();
+    } catch (_) {
+      // ignore
+    } finally {
+      ws.ptyProcess = null;
+    }
+  };
+
+  ws.on("message", (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(String(raw));
     } catch (e) {
       return;
     }
 
-    // Auth check
-    if (data.type === "auth") {
-      if (data.token === PASSWORD_HASH) {
-        authenticated = true;
-        ws.send(JSON.stringify({ type: "authenticated" }));
-        return;
-      } else {
-        ws.send(JSON.stringify({ type: "error", message: "Invalid session" }));
-        ws.close();
+    // Require explicit auth first
+    if (!ws.isAuthed) {
+      if (msg && msg.type === "auth") {
+        const token = String(msg.token || "").trim();
+        if (!isValidSession(token)) {
+          try {
+            ws.send(JSON.stringify({ type: "auth_failed" }));
+          } catch (_) {}
+          ws.close(1008, "Unauthorized");
+          return;
+        }
+        ws.isAuthed = true;
+        ws.sessionToken = token;
+        try {
+          ws.send(JSON.stringify({ type: "auth_ok" }));
+        } catch (_) {}
         return;
       }
+
+      // Any other message before auth => reject
+      try {
+        ws.send(JSON.stringify({ type: "auth_required" }));
+      } catch (_) {}
+      ws.close(1008, "Auth required");
+      return;
     }
 
-    if (!authenticated) return;
+    // After auth: allow terminal start/input/resize
+    if (msg.type === "start") {
+      const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
+      const cwd = safeCwd(msg.project);
 
-    // Terminal Commands
-    if (data.type === "terminal_input") {
-      if (shell) shell.write(data.data);
-    } else if (data.type === "spawn") {
-      if (shell) shell.kill();
-
-      const workingDir = data.project 
-        ? path.join(PROJECTS_DIR, data.project) 
-        : PROJECTS_DIR;
-
-      shell = pty.spawn(process.platform === "win32" ? "powershell.exe" : "bash", [], {
+      killPty();
+      ws.ptyProcess = pty.spawn(shell, [], {
         name: "xterm-color",
-        cols: data.cols || 80,
-        rows: data.rows || 24,
-        cwd: workingDir,
+        cols: Number(msg.cols || 80),
+        rows: Number(msg.rows || 24),
+        cwd,
         env: process.env,
       });
 
-      shell.onData((output) => {
-        ws.send(JSON.stringify({ type: "terminal_output", data: output }));
+      ws.ptyProcess.onData((data) => {
+        try {
+          ws.send(JSON.stringify({ type: "data", data }));
+        } catch (_) {
+          // ignore
+        }
       });
 
-      shell.onExit(() => {
-        ws.send(JSON.stringify({ type: "terminal_exit" }));
-        shell = null;
+      ws.ptyProcess.onExit(() => {
+        try {
+          ws.send(JSON.stringify({ type: "exit" }));
+        } catch (_) {
+          // ignore
+        }
+        killPty();
       });
-    } else if (data.type === "resize") {
-      if (shell) shell.resize(data.cols, data.rows);
+
+      return;
+    }
+
+    if (msg.type === "input" && ws.ptyProcess) {
+      ws.ptyProcess.write(String(msg.data || ""));
+      return;
+    }
+
+    if (msg.type === "resize" && ws.ptyProcess) {
+      const cols = Number(msg.cols || 80);
+      const rows = Number(msg.rows || 24);
+      try {
+        ws.ptyProcess.resize(cols, rows);
+      } catch (_) {
+        // ignore
+      }
+      return;
     }
   });
 
   ws.on("close", () => {
-    if (shell) shell.kill();
+    try {
+      if (ws.ptyProcess) ws.ptyProcess.kill();
+    } catch (_) {
+      // ignore
+    }
+  });
+
+  ws.on("error", () => {
+    // Keep server stable
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Pocket Terminal running on port ${PORT}`);
+server.listen(PORT, () => {
+  console.log(`Pocket Terminal running on http://localhost:${PORT}`);
 });

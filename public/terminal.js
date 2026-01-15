@@ -3,31 +3,34 @@ let term;
 let fitAddon;
 let sessionToken = null;
 let reconnectAttempts = 0;
+let manuallyLoggedOut = false;
+
 const MAX_RECONNECT_DELAY = 30000;
+const TOKEN_STORAGE_KEY = "pocket_token";
 
 // Optimized Terminal Theme to match UI
 const terminalTheme = {
-  background: '#09090b',
-  foreground: '#fafafa',
-  cursor: '#6366f1',
-  cursorAccent: '#09090b',
-  selection: 'rgba(99, 102, 241, 0.3)',
-  black: '#18181b',
-  red: '#ef4444',
-  green: '#10b981',
-  yellow: '#f59e0b',
-  blue: '#3b82f6',
-  magenta: '#8b5cf6',
-  cyan: '#06b6d4',
-  white: '#fafafa',
-  brightBlack: '#71717a',
-  brightRed: '#f87171',
-  brightGreen: '#34d399',
-  brightYellow: '#fbbf24',
-  brightBlue: '#60a5fa',
-  brightMagenta: '#a78bfa',
-  brightCyan: '#22d3ee',
-  brightWhite: '#ffffff'
+  background: "#09090b",
+  foreground: "#fafafa",
+  cursor: "#6366f1",
+  cursorAccent: "#09090b",
+  selection: "rgba(99, 102, 241, 0.3)",
+  black: "#18181b",
+  red: "#ef4444",
+  green: "#10b981",
+  yellow: "#f59e0b",
+  blue: "#3b82f6",
+  magenta: "#8b5cf6",
+  cyan: "#06b6d4",
+  white: "#fafafa",
+  brightBlack: "#71717a",
+  brightRed: "#f87171",
+  brightGreen: "#34d399",
+  brightYellow: "#fbbf24",
+  brightBlue: "#60a5fa",
+  brightMagenta: "#a78bfa",
+  brightCyan: "#22d3ee",
+  brightWhite: "#ffffff",
 };
 
 function showToast(message, type = "info") {
@@ -40,35 +43,61 @@ function showToast(message, type = "info") {
 }
 
 function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  document.querySelectorAll(".screen").forEach((s) => s.classList.add("hidden"));
   const target = document.getElementById(id);
-  if (target) target.classList.remove('hidden');
-  
-  if (id === 'terminal-screen' && term) {
+  if (target) target.classList.remove("hidden");
+
+  if (id === "terminal-screen" && term) {
     setTimeout(() => {
-      fitAddon.fit();
+      if (fitAddon) fitAddon.fit();
       term.focus();
     }, 100);
   }
 }
 
+function getStoredToken() {
+  try {
+    return localStorage.getItem(TOKEN_STORAGE_KEY);
+  } catch (_) {
+    return null;
+  }
+}
+
+function setStoredToken(token) {
+  try {
+    if (!token) localStorage.removeItem(TOKEN_STORAGE_KEY);
+    else localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } catch (_) {
+    // ignore
+  }
+}
+
+function clearAuthState() {
+  sessionToken = null;
+  setStoredToken(null);
+}
+
 async function handleLogin(e) {
   if (e) e.preventDefault();
-  const passwordInput = document.getElementById('password');
-  const password = passwordInput ? passwordInput.value : '';
-  const errorEl = document.getElementById('login-error');
-  
+  manuallyLoggedOut = false;
+
+  const passwordInput = document.getElementById("password");
+  const password = passwordInput ? passwordInput.value : "";
+  const errorEl = document.getElementById("login-error");
+
   try {
-    const res = await fetch('/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
+    const res = await fetch("/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password }),
     });
-    
-    const data = await res.json();
-    if (data.success) {
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok && data && data.success && data.token) {
       sessionToken = data.token;
-      sessionStorage.setItem("pocket_token", sessionToken);
+      setStoredToken(sessionToken);
+      if (passwordInput) passwordInput.value = "";
       if (errorEl) errorEl.textContent = "";
       connect(sessionToken);
     } else {
@@ -79,185 +108,240 @@ async function handleLogin(e) {
   }
 }
 
+function updateConnectionStatus(isOnline) {
+  const dot = document.getElementById("status-dot");
+  const text = document.getElementById("status-text");
+  if (dot) dot.className = `dot ${isOnline ? "online" : "offline"}`;
+  if (text) text.textContent = isOnline ? "CONNECTED" : "DISCONNECTED";
+}
+
+function scheduleReconnect() {
+  reconnectAttempts += 1;
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
+  setTimeout(() => {
+    // Only reconnect if we still have a token and user didn't log out
+    const token = sessionToken || getStoredToken();
+    if (!token || manuallyLoggedOut) return;
+    connect(token);
+  }, delay);
+}
+
 function connect(token) {
+  sessionToken = token;
+
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}`;
-  
-  socket = new WebSocket(wsUrl);
+
+  try {
+    socket = new WebSocket(wsUrl);
+  } catch (e) {
+    updateConnectionStatus(false);
+    scheduleReconnect();
+    return;
+  }
 
   socket.onopen = () => {
     reconnectAttempts = 0;
-    socket.send(JSON.stringify({ type: "auth", token: token }));
-    const dot = document.getElementById('status-dot');
-    const text = document.getElementById('status-text');
-    if (dot) dot.className = 'dot online';
-    if (text) text.textContent = 'CONNECTED';
+    updateConnectionStatus(true);
+    socket.send(JSON.stringify({ type: "auth", token: sessionToken }));
   };
 
   socket.onclose = () => {
-    const dot = document.getElementById('status-dot');
-    const text = document.getElementById('status-text');
-    if (dot) dot.className = 'dot offline';
-    if (text) text.textContent = 'DISCONNECTED';
-    if (sessionToken) scheduleReconnect();
+    updateConnectionStatus(false);
+    // If we are authenticated (token present) and didn't logout, attempt reconnect
+    if ((sessionToken || getStoredToken()) && !manuallyLoggedOut) scheduleReconnect();
   };
 
-  socket.onerror = (err) => {
-    console.error("WebSocket error:", err);
-    showToast("Connection error", "error");
+  socket.onerror = () => {
+    updateConnectionStatus(false);
   };
 
   socket.onmessage = (event) => {
+    let msg;
     try {
-      const data = JSON.parse(event.data);
-      switch (data.type) {
-        case "authenticated":
-          showScreen("launcher-screen");
-          loadProjects();
-          initTerminal();
-          break;
-        case "terminal_output":
-          if (term) term.write(data.data);
-          break;
-        case "error":
-          showToast(data.message, "error");
-          if (data.message === "Invalid session") logout();
-          break;
-      }
-    } catch (e) {
-      console.error("Msg Error", e);
+      msg = JSON.parse(event.data);
+    } catch (_) {
+      return;
+    }
+
+    if (msg.type === "auth_ok") {
+      // Authenticated: load launcher by default
+      showScreen("launcher-screen");
+      loadProjects();
+      return;
+    }
+
+    if (msg.type === "auth_failed" || msg.type === "auth_required") {
+      // Token invalid/expired => clear and go to login
+      clearAuthState();
+      updateConnectionStatus(false);
+      showScreen("login-screen");
+      showToast("Session expired. Please log in again.", "warning");
+      try {
+        socket.close();
+      } catch (_) {}
+      return;
+    }
+
+    if (msg.type === "data" && term) {
+      term.write(msg.data);
+      return;
+    }
+
+    if (msg.type === "exit") {
+      showToast("Terminal session ended.", "info");
+      showScreen("launcher-screen");
+      return;
     }
   };
 }
 
-function scheduleReconnect() {
-  reconnectAttempts++;
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
-  showToast(`Reconnecting in ${delay/1000}s...`, "warning");
-  setTimeout(() => {
-    if (sessionToken) connect(sessionToken);
-  }, delay);
+async function autostart() {
+  // If a token exists, try to connect without showing login
+  const token = getStoredToken();
+  if (token) {
+    sessionToken = token;
+    connect(token);
+    return;
+  }
+  showScreen("login-screen");
 }
 
-function initTerminal() {
+async function loadProjects() {
+  const select = document.getElementById("project-select");
+  if (!select) return;
+
+  // Keep the first option ("Root Environment") and clear others
+  while (select.options.length > 1) select.remove(1);
+
+  const token = sessionToken || getStoredToken();
+  if (!token) return;
+
+  try {
+    const res = await fetch("/api/projects", {
+      headers: { Authorization: token },
+    });
+
+    if (res.status === 401) {
+      clearAuthState();
+      showScreen("login-screen");
+      return;
+    }
+
+    const projects = await res.json();
+    if (Array.isArray(projects)) {
+      projects.forEach((name) => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        select.appendChild(opt);
+      });
+    }
+  } catch (_) {
+    // ignore; user can still use root env
+  }
+}
+
+function ensureTerminal() {
   if (term) return;
 
   term = new Terminal({
     theme: terminalTheme,
     cursorBlink: true,
+    fontFamily: "JetBrains Mono, Menlo, Monaco, monospace",
     fontSize: 14,
-    fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
-    convertEol: true,
-    allowProposedApi: true
+    lineHeight: 1.2,
+    scrollback: 5000,
   });
 
   fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
-  term.open(document.getElementById('terminal-container'));
-  fitAddon.fit();
 
-  term.onData(data => {
+  const container = document.getElementById("terminal");
+  if (!container) return;
+
+  term.open(container);
+  setTimeout(() => fitAddon.fit(), 50);
+
+  term.onData((data) => {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "terminal_input", data }));
+      socket.send(JSON.stringify({ type: "input", data }));
     }
   });
 
-  window.addEventListener('resize', () => {
+  window.addEventListener("resize", () => {
+    if (!fitAddon || !term) return;
     fitAddon.fit();
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({
-        type: "resize",
-        cols: term.cols,
-        rows: term.rows
-      }));
+      socket.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
     }
   });
 }
 
 function launchCLI(tool, args = []) {
-  const project = document.getElementById('project-select').value;
-  showScreen('terminal-screen');
-  
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({
-      type: "spawn",
-      project: project,
-      cols: term.cols,
-      rows: term.rows
-    }));
-    
-    // Auto-run the tool command
-    const cmd = tool + " " + args.join(" ") + "\n";
-    setTimeout(() => {
-      socket.send(JSON.stringify({ type: "terminal_input", data: cmd }));
-    }, 500);
+  // This function is referenced by index.html cards.
+  // It starts a terminal session and runs the requested tool command.
+  ensureTerminal();
+
+  const projectSelect = document.getElementById("project-select");
+  const project = projectSelect && projectSelect.value ? projectSelect.value : "";
+
+  showScreen("terminal-screen");
+  setTimeout(() => {
+    if (fitAddon) fitAddon.fit();
+    term.focus();
+  }, 100);
+
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    showToast("Disconnected. Reconnecting...", "warning");
+    const token = sessionToken || getStoredToken();
+    if (token) connect(token);
+    return;
   }
-}
 
-async function loadProjects() {
-  try {
-    const res = await fetch('/api/projects', {
-      headers: { 'Authorization': sessionToken }
-    });
-    const projects = await res.json();
-    const select = document.getElementById('project-select');
-    if (!select) return;
+  socket.send(JSON.stringify({ type: "start", cols: term.cols || 80, rows: term.rows || 24, project }));
 
-    select.innerHTML = '<option value="">Root Environment</option>';
-    projects.forEach(p => {
-      const opt = document.createElement('option');
-      opt.value = p;
-      opt.textContent = p;
-      select.appendChild(opt);
-    });
-  } catch (err) {
-    console.error("Load projects failed");
-  }
-}
-
-async function cloneRepo() {
-  const repoUrl = prompt("Enter Git Repository URL:");
-  if (!repoUrl) return;
-
-  showToast("Cloning repository...", "info");
-  try {
-    const res = await fetch('/api/clone', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': sessionToken
-      },
-      body: JSON.stringify({ repoUrl })
-    });
-    const data = await res.json();
-    if (data.success) {
-      showToast("Repository cloned successfully!", "success");
-      loadProjects();
-    } else {
-      showToast("Clone failed: " + data.error, "error");
+  // Send the command after PTY initializes
+  setTimeout(() => {
+    const cmd = [tool, ...args].join(" ").trim();
+    if (cmd && socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "input", data: cmd + "\n" }));
     }
-  } catch (err) {
-    showToast("Network error during clone", "error");
-  }
+  }, 250);
 }
 
-function logout() {
-  sessionToken = null;
-  sessionStorage.removeItem("pocket_token");
-  if (socket) socket.close();
-  showScreen('login-screen');
+async function logout() {
+  manuallyLoggedOut = true;
+
+  const token = sessionToken || getStoredToken();
+  clearAuthState();
+
+  // Best-effort revoke server-side
+  if (token) {
+    try {
+      await fetch("/logout", { method: "POST", headers: { Authorization: token } });
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  try {
+    if (socket) socket.close();
+  } catch (_) {
+    // ignore
+  }
+
+  updateConnectionStatus(false);
+  showScreen("login-screen");
 }
 
-// Global App Init
-document.addEventListener('DOMContentLoaded', () => {
-  const loginForm = document.getElementById('login-form');
-  if (loginForm) loginForm.addEventListener('submit', handleLogin);
+document.addEventListener("DOMContentLoaded", () => {
+  const loginForm = document.getElementById("login-form");
+  if (loginForm) loginForm.addEventListener("submit", handleLogin);
 
-  const savedToken = sessionStorage.getItem("pocket_token");
-  if (savedToken) {
-    sessionToken = savedToken;
-    connect(sessionToken);
-  } else {
-    showScreen('login-screen');
-  }
+  autostart();
 });
+
+// Expose functions used by inline HTML onclick handlers
+window.launchCLI = launchCLI;
+window.logout = logout;
