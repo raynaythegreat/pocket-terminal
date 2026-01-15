@@ -103,7 +103,7 @@ function buildPasswordConfig(env, logger) {
   if (isProd) {
     if (logger && typeof logger.warn === "function") {
       logger.warn(
-        "TERMINAL_PASSWORD is NOT set in production. Authentication is disabled until it is configured."
+        "TERMINAL_PASSWORD is not set in production. Authentication is misconfigured; all logins will be rejected."
       );
     }
     return {
@@ -112,13 +112,13 @@ function buildPasswordConfig(env, logger) {
     };
   }
 
+  // Non-production fallback
+  const defaultPassword = "Superprimitive69!";
   if (logger && typeof logger.warn === "function") {
     logger.warn(
-      "TERMINAL_PASSWORD not set. Using default development password. Do NOT use this setup in production."
+      'TERMINAL_PASSWORD not set. Using default development password "Superprimitive69!". Do NOT use this in production.'
     );
   }
-
-  const defaultPassword = "Superprimitive69!";
   return {
     mode: "default",
     passwordHash: hashPassword(defaultPassword),

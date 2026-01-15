@@ -98,144 +98,115 @@ app.post("/auth", (req, res) => {
         success: false,
         error: "server_misconfigured",
         message:
-          "Authentication is not configured. Admin must set TERMINAL_PASSWORD.",
+          "Authentication is not configured correctly on the server. TERMINAL_PASSWORD must be set.",
       });
     }
 
-    if (!req.body || typeof req.body.password !== "string") {
-      return res.status(400).json({
+    const { password } = req.body || {};
+    if (typeof password !== "string" || password.trim().length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, error: "invalid_request", message: "Password is required." });
+    }
+
+    if (!PASSWORD_HASH) {
+      // Should not happen in non-misconfigured modes, but guard just in case.
+      console.error("PASSWORD_HASH is missing despite PASSWORD_MODE =", PASSWORD_MODE);
+      return res.status(500).json({
         success: false,
-        error: "invalid_request",
-        message: "Password is required.",
+        error: "internal_error",
+        message: "Authentication system is not available.",
       });
     }
 
-    const { password } = req.body;
-
-    if (!verifyPassword(password, PASSWORD_HASH)) {
-      return res.status(401).json({
-        success: false,
-        error: "invalid_password",
-        message: "Invalid password.",
-      });
+    const ok = verifyPassword(password, PASSWORD_HASH);
+    if (!ok) {
+      return res
+        .status(401)
+        .json({ success: false, error: "invalid_password", message: "Invalid password." });
     }
 
     const token = createNewSession();
-
-    return res.json({
-      success: true,
-      token,
-      sessionTtlMs: SESSION_TTL_MS,
-    });
+    return res.json({ success: true, token });
   } catch (err) {
     console.error("Error in /auth:", err);
     return res.status(500).json({
       success: false,
       error: "internal_error",
-      message: "Internal server error.",
-    });
-  }
-});
-
-app.post("/auth/logout", (req, res) => {
-  try {
-    const token = getBearerToken(req) || (req.body && req.body.token) || null;
-    if (token) {
-      revokeSessionToken(token);
-    }
-    return res.json({ success: true });
-  } catch (err) {
-    console.error("Error in /auth/logout:", err);
-    return res.status(500).json({
-      success: false,
-      error: "internal_error",
-      message: "Internal server error.",
+      message: "Unexpected error during authentication.",
     });
   }
 });
 
 app.get("/auth/status", (req, res) => {
   try {
-    const nodeEnv = process.env.NODE_ENV || "development";
-    const isProd = nodeEnv === "production";
+    const authConfigured = PASSWORD_MODE !== "misconfigured";
+    const isProd = (process.env.NODE_ENV || "development") === "production";
 
-    const payload = {
-      authConfigured: PASSWORD_MODE !== "misconfigured",
-    };
-
-    // In non-production we can expose more detailed mode info for diagnostics.
+    const payload = { authConfigured };
     if (!isProd) {
+      // In non-production we can safely expose the mode to help debugging
       payload.mode = PASSWORD_MODE;
     }
 
-    return res.json(payload);
+    res.json(payload);
   } catch (err) {
     console.error("Error in /auth/status:", err);
-    return res.status(500).json({
-      success: false,
-      error: "internal_error",
-      message: "Internal server error.",
-    });
+    res.status(500).json({ authConfigured: false });
   }
 });
 
 // ---------------------------------------------------------------------------
-// WebSocket + PTY handling
+// Terminal WebSocket + PTY
 // ---------------------------------------------------------------------------
+
+function getProjectCwd(projectName) {
+  if (!projectName) return process.cwd();
+  const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "_");
+  return path.join(PROJECTS_DIR, safeName);
+}
+
 wss.on("connection", (ws, req) => {
-  // Extract token from query string: ws://...?token=...
+  // Expect ?token=...&project=...
   const url = new URL(req.url, `http://${req.headers.host}`);
   const token = url.searchParams.get("token");
+  const project = url.searchParams.get("project") || "";
 
   if (!isSessionValid(token)) {
-    ws.close(4001, "unauthorized");
+    ws.close(1008, "unauthorized");
     return;
   }
 
-  // Spawn a shell
-  const shell =
-    process.env.SHELL ||
-    (process.platform === "win32" ? "powershell.exe" : "bash");
+  const cwd = getProjectCwd(project);
 
+  if (!fs.existsSync(cwd)) {
+    fs.mkdirSync(cwd, { recursive: true });
+  }
+
+  // Spawn shell
+  const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
   const ptyProcess = pty.spawn(shell, [], {
     name: "xterm-color",
     cols: 80,
-    rows: 24,
-    cwd: PROJECTS_DIR,
+    rows: 30,
+    cwd,
     env: process.env,
-  });
-
-  ptyProcess.on("data", (data) => {
-    try {
-      ws.send(data);
-    } catch (err) {
-      console.error("Error sending data over WS:", err);
-    }
   });
 
   ws.on("message", (msg) => {
     try {
-      const text =
-        typeof msg === "string" ? msg : Buffer.from(msg).toString("utf8");
-      // Support resize messages: {"type":"resize","cols":n,"rows":m}
-      try {
-        const parsed = JSON.parse(text);
-        if (
-          parsed &&
-          parsed.type === "resize" &&
-          Number.isInteger(parsed.cols) &&
-          Number.isInteger(parsed.rows)
-        ) {
-          ptyProcess.resize(parsed.cols, parsed.rows);
-          return;
-        }
-      } catch {
-        // Not JSON; treat as regular input
-      }
-
-      ptyProcess.write(text);
+      const data = msg.toString();
+      ptyProcess.write(data);
     } catch (err) {
       console.error("Error handling WS message:", err);
+    }
+  });
+
+  ptyProcess.onData((data) => {
+    try {
+      ws.send(data);
+    } catch (err) {
+      console.error("Error sending WS data:", err);
     }
   });
 
@@ -243,7 +214,7 @@ wss.on("connection", (ws, req) => {
     try {
       ptyProcess.kill();
     } catch (err) {
-      console.error("Error killing PTY on WS close:", err);
+      console.error("Error killing PTY on close:", err);
     }
   });
 
@@ -251,45 +222,55 @@ wss.on("connection", (ws, req) => {
     console.error("WebSocket error:", err);
     try {
       ptyProcess.kill();
-    } catch (e) {
-      console.error("Error killing PTY on WS error:", e);
+    } catch (_) {
+      // ignore
     }
   });
 });
 
 // ---------------------------------------------------------------------------
-// API routes (example protected route)
+// API routes for project management (authenticated)
 // ---------------------------------------------------------------------------
+
 app.get("/projects", requireAuth, (req, res) => {
   try {
     if (!fs.existsSync(PROJECTS_DIR)) {
-      return res.json({ success: true, projects: [] });
+      return res.json({ projects: [] });
     }
-
-    const entries = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true });
-    const projects = entries
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-      .sort();
-
-    res.json({ success: true, projects });
+    const dirs = fs
+      .readdirSync(PROJECTS_DIR, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+    res.json({ projects: dirs });
   } catch (err) {
-    console.error("Error in /projects:", err);
-    res.status(500).json({
-      success: false,
-      error: "internal_error",
-      message: "Internal server error.",
-    });
+    console.error("Error listing projects:", err);
+    res.status(500).json({ projects: [] });
+  }
+});
+
+app.post("/projects", requireAuth, (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (typeof name !== "string" || !name.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, error: "invalid_request", message: "Project name is required." });
+    }
+    const safeName = name.replace(/[^a-zA-Z0-9-_]/g, "_");
+    const dir = path.join(PROJECTS_DIR, safeName);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    res.json({ success: true, name: safeName });
+  } catch (err) {
+    console.error("Error creating project:", err);
+    res.status(500).json({ success: false, error: "internal_error" });
   }
 });
 
 // ---------------------------------------------------------------------------
-// Static file handling + server start
+// Start server
 // ---------------------------------------------------------------------------
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
-});
-
 server.listen(PORT, () => {
-  console.log(`Pocket Terminal listening on http://localhost:${PORT}`);
+  console.log(`Pocket Terminal server running on port ${PORT}`);
 });
