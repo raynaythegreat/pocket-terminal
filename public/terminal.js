@@ -12,7 +12,6 @@ const terminalScreen = document.getElementById('terminal-screen');
 const projectSelect = document.getElementById('project-select');
 const ctxLabel = document.getElementById('current-ctx');
 
-// Initialize App
 function init() {
   const savedPass = sessionStorage.getItem('pocket_pass');
   if (savedPass) connect(savedPass);
@@ -20,8 +19,7 @@ function init() {
 
 document.getElementById('login-form').onsubmit = (e) => {
   e.preventDefault();
-  const password = document.getElementById('password').value;
-  connect(password);
+  connect(document.getElementById('password').value);
 };
 
 function connect(password) {
@@ -47,25 +45,21 @@ function connect(password) {
     } else if (data.type === 'data') {
       if (term) term.write(data.data);
     } else if (data.type === 'exit') {
-      exitTerminal();
+      closeTerminal();
     }
   };
 
   socket.onclose = () => {
-    document.getElementById('connection-status').innerText = 'Disconnected';
-    document.getElementById('connection-status').style.color = 'red';
-    // Auto-reconnect
-    if (authToken) setTimeout(() => connect(authToken), 2000);
+    document.getElementById('connection-status').innerText = 'Offline';
+    document.getElementById('connection-status').style.color = 'var(--error)';
+    if (authToken) setTimeout(() => connect(authToken), 3000);
   };
 }
 
 async function loadProjects() {
   try {
-    const res = await fetch('/api/projects', {
-      headers: { 'Authorization': authToken }
-    });
+    const res = await fetch('/api/projects', { headers: { 'Authorization': authToken } });
     const projects = await res.json();
-    
     projectSelect.innerHTML = '<option value="">Root Workspace</option>';
     projects.forEach(p => {
       const opt = document.createElement('option');
@@ -73,66 +67,43 @@ async function loadProjects() {
       opt.textContent = p;
       projectSelect.appendChild(opt);
     });
-  } catch (err) {
-    console.error('Failed to load projects');
-  }
+  } catch (err) { console.error('Load projects failed'); }
 }
 
-// Project Actions
-projectSelect.onchange = (e) => {
-  currentProjectId = e.target.value;
-  ctxLabel.innerText = currentProjectId || 'Root';
-};
-
-document.getElementById('clone-repo-btn').onclick = async () => {
-  const url = prompt('GitHub Repo URL (HTTPS):');
-  if (!url) return;
-  
-  try {
-    const res = await fetch('/api/projects/clone', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
-      body: JSON.stringify({ url })
-    });
-    if (res.ok) {
-      loadProjects();
-      alert('Cloned successfully!');
-    } else {
-      const msg = await res.text();
-      alert('Error: ' + msg);
-    }
-  } catch (err) { alert('Clone failed'); }
-};
-
-// Terminal Lifecycle
-function startTerminal(cmd, args = []) {
+function launchCLI(cmd, args = []) {
   launcherScreen.classList.add('hidden');
   terminalScreen.classList.remove('hidden');
-  document.getElementById('term-title').innerText = cmd.toUpperCase();
 
   if (!term) {
     term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      theme: { background: '#000000' },
-      allowProposedApi: true
+      theme: {
+        background: '#000000',
+        foreground: '#ffffff'
+      }
     });
     fitAddon = new FitAddon.FitAddon();
     term.loadAddon(fitAddon);
     term.open(document.getElementById('terminal-container'));
     
     term.onData(data => {
-      socket.send(JSON.stringify({ type: 'input', data }));
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'input', data }));
+      }
     });
+    
+    window.addEventListener('resize', () => fitAddon.fit());
   }
 
+  term.clear();
   setTimeout(() => {
     fitAddon.fit();
     socket.send(JSON.stringify({
       type: 'spawn',
       command: cmd,
-      args: args,
+      args: Array.isArray(args) ? args : [args],
       projectId: currentProjectId,
       cols: term.cols,
       rows: term.rows
@@ -140,62 +111,51 @@ function startTerminal(cmd, args = []) {
   }, 100);
 }
 
-function exitTerminal() {
+function closeTerminal() {
   terminalScreen.classList.add('hidden');
   launcherScreen.classList.remove('hidden');
 }
 
-document.getElementById('back-to-launcher').onclick = () => {
-  terminalScreen.classList.add('hidden');
-  launcherScreen.classList.remove('hidden');
-};
-
-document.querySelectorAll('.cli-card').forEach(card => {
-  card.onclick = () => {
-    const args = card.dataset.args ? card.dataset.args.split(' ') : [];
-    startTerminal(card.dataset.cmd, args);
-  };
-});
-
 // Mobile Helper Keys
-document.querySelectorAll('.helper-btn').forEach(btn => {
+document.querySelectorAll('.tool-btn').forEach(btn => {
   btn.onclick = () => {
-    const key = btn.dataset.key;
-    if (key === 'ctrl') {
+    const key = btn.getAttribute('data-key');
+    if (key === 'CTRL') {
       ctrlActive = !ctrlActive;
-      btn.classList.toggle('active', ctrlActive);
+      btn.style.background = ctrlActive ? 'var(--accent)' : '';
       return;
     }
-
-    let sequence = '';
-    switch(key) {
-      case 'tab': sequence = '\t'; break;
-      case 'esc': sequence = '\x1b'; break;
-      case 'up': sequence = '\x1b[A'; break;
-      case 'down': sequence = '\x1b[B'; break;
-      case 'left': sequence = '\x1b[D'; break;
-      case 'right': sequence = '\x1b[C'; break;
-      case '/': sequence = '/'; break;
-    }
-
-    if (ctrlActive && key.length === 1) {
-      // Handle Ctrl+Key combinations
-      const code = key.toUpperCase().charCodeAt(0) - 64;
-      sequence = String.fromCharCode(code);
+    
+    let input = '';
+    if (key === 'TAB') input = '\t';
+    if (key === 'ESC') input = '\x1b';
+    if (key === 'UP') input = '\x1b[A';
+    if (key === 'DOWN') input = '\x1b[B';
+    
+    if (ctrlActive) {
+      // If CTRL is active, convert key to control char
+      input = String.fromCharCode(key.charCodeAt(0) - 64);
       ctrlActive = false;
-      document.querySelector('[data-key="ctrl"]').classList.remove('active');
+      document.querySelector('[data-key="CTRL"]').style.background = '';
     }
 
-    socket.send(JSON.stringify({ type: 'input', data: sequence }));
+    socket.send(JSON.stringify({ type: 'input', data: input }));
     term.focus();
   };
 });
 
-window.onresize = () => {
-  if (fitAddon) {
-    fitAddon.fit();
-    socket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
-  }
+document.querySelectorAll('.cli-card').forEach(card => {
+  card.onclick = () => launchCLI(card.dataset.cmd, card.dataset.args ? card.dataset.args.split(' ') : []);
+});
+
+projectSelect.onchange = (e) => {
+  currentProjectId = e.target.value;
+  ctxLabel.innerText = currentProjectId || 'Root';
+};
+
+document.getElementById('logout-btn').onclick = () => {
+  sessionStorage.removeItem('pocket_pass');
+  location.reload();
 };
 
 init();

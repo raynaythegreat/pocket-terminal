@@ -4,36 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="theme-color" content="#0b1020">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Pocket Terminal</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- Login Screen -->
+  <!-- Login -->
   <div id="login-screen" class="screen">
     <div class="login-container">
-      <div class="glow-orb"></div>
       <h1>Pocket Terminal</h1>
-      <p>Mobile AI Workspace</p>
+      <p>Mobile Workspace</p>
       <form id="login-form">
-        <input type="password" id="password" placeholder="Access Password" required autocomplete="current-password">
+        <input type="password" id="password" placeholder="Access Password" required>
         <button type="submit">Unlock</button>
       </form>
       <p id="login-error" class="error"></p>
     </div>
   </div>
 
-  <!-- Launcher / Dashboard -->
+  <!-- Dashboard -->
   <div id="launcher-screen" class="screen hidden">
     <header class="main-header">
       <div class="brand">
-        <span class="logo-icon">⚡</span>
-        <div>
-          <h1>Workspace</h1>
-          <span id="connection-status" class="status-badge">Connected</span>
-        </div>
+        <h1>Workspace</h1>
+        <span id="connection-status" class="status-badge">Online</span>
       </div>
       <button id="logout-btn" class="icon-btn">✕</button>
     </header>
@@ -41,8 +36,7 @@
     <main class="dashboard-content">
       <section class="panel">
         <div class="panel-header">
-          <h2>Project Context</h2>
-          <button id="clone-repo-btn" class="text-btn">+ Clone Repo</button>
+          <h2>Context</h2>
         </div>
         <div class="select-wrapper">
           <select id="project-select">
@@ -53,51 +47,45 @@
 
       <section class="panel">
         <div class="panel-header">
-          <h2>Launch Tool</h2>
-          <span class="hint">Target: <span id="current-ctx">Root</span></span>
+          <h2>Launch CLI</h2>
+          <span class="hint" id="current-ctx">Root</span>
         </div>
         <div class="cli-grid">
-          <button class="cli-card" data-cmd="claude" data-label="Claude">
+          <button class="cli-card" data-cmd="claude">
             <div class="cli-icon claude">C</div>
-            <div class="cli-info"><h3>Claude</h3><p>Anthropic AI</p></div>
+            <span>Claude</span>
           </button>
-          <button class="cli-card" data-cmd="gemini" data-args="chat" data-label="Gemini">
+          <button class="cli-card" data-cmd="gemini" data-args="chat">
             <div class="cli-icon gemini">G</div>
-            <div class="cli-info"><h3>Gemini</h3><p>Google AI</p></div>
+            <span>Gemini</span>
           </button>
-          <button class="cli-card" data-cmd="bash" data-label="Bash">
+          <button class="cli-card" data-cmd="bash">
             <div class="cli-icon bash">B</div>
-            <div class="cli-info"><h3>Bash</h3><p>Linux Shell</p></div>
+            <span>Bash</span>
           </button>
-          <button class="cli-card" data-cmd="git" data-args="status" data-label="Git">
+          <button class="cli-card" data-cmd="git" data-args="status">
             <div class="cli-icon git">G</div>
-            <div class="cli-info"><h3>Git</h3><p>Version Control</p></div>
+            <span>Git</span>
           </button>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Terminal View -->
+  <!-- Terminal -->
   <div id="terminal-screen" class="screen hidden">
     <header class="term-header">
-      <button id="back-to-launcher" class="icon-btn">←</button>
-      <h2 id="term-title">Terminal</h2>
-      <button id="clear-term-btn" class="icon-btn">🧹</button>
+      <button onclick="closeTerminal()" class="text-btn">← Back</button>
+      <div id="term-title">Terminal</div>
+      <div style="width: 40px"></div>
     </header>
-
     <div id="terminal-container"></div>
-
-    <!-- Mobile Helper Bar -->
-    <div class="mobile-helper-bar">
-      <button class="helper-btn" data-key="tab">TAB</button>
-      <button class="helper-btn" data-key="ctrl">CTRL</button>
-      <button class="helper-btn" data-key="esc">ESC</button>
-      <button class="helper-btn" data-key="up">↑</button>
-      <button class="helper-btn" data-key="down">↓</button>
-      <button class="helper-btn" data-key="left">←</button>
-      <button class="helper-btn" data-key="right">→</button>
-      <button class="helper-btn" data-key="/">/</button>
+    <div class="mobile-tools">
+      <button class="tool-btn" data-key="CTRL">CTRL</button>
+      <button class="tool-btn" data-key="TAB">TAB</button>
+      <button class="tool-btn" data-key="ESC">ESC</button>
+      <button class="tool-btn" data-key="UP">↑</button>
+      <button class="tool-btn" data-key="DOWN">↓</button>
     </div>
   </div>
 

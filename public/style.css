@@ -1,14 +1,29 @@
 :root {
-  --bg: #0b1020;
-  --bg-alt: #070b16;
-  --surface: rgba(255, 255, 255, 0.05);
-  --surface-active: rgba(255, 255, 255, 0.1);
-  --border: rgba(255, 255, 255, 0.1);
-  --accent: #4f8cff;
-  --text: #ffffff;
-  --text-muted: #8a8fa3;
+  /* Default Light Theme */
+  --bg: #f8fafc;
+  --bg-alt: #f1f5f9;
+  --surface: rgba(255, 255, 255, 0.7);
+  --surface-active: rgba(255, 255, 255, 0.9);
+  --border: rgba(0, 0, 0, 0.1);
+  --accent: #3b82f6;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --error: #ef4444;
   --safe-top: env(safe-area-inset-top, 20px);
   --safe-bottom: env(safe-area-inset-bottom, 20px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1020;
+    --bg-alt: #070b16;
+    --surface: rgba(255, 255, 255, 0.05);
+    --surface-active: rgba(255, 255, 255, 0.1);
+    --border: rgba(255, 255, 255, 0.1);
+    --accent: #4f8cff;
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+  }
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -30,6 +45,7 @@ body, html {
   flex-direction: column;
   background-color: var(--bg);
   z-index: 10;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .hidden { display: none !important; }
@@ -40,29 +56,26 @@ body, html {
   width: 90%;
   max-width: 360px;
   text-align: center;
-  position: relative;
+  padding: 40px 20px;
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  border-radius: 32px;
+  border: 1px solid var(--border);
 }
 
-.glow-orb {
-  position: absolute;
-  top: 50%; left: 50%;
-  width: 200px; height: 200px;
-  background: var(--accent);
-  filter: blur(80px);
-  opacity: 0.2;
-  transform: translate(-50%, -50%);
-  z-index: -1;
-}
+.login-container h1 { font-size: 24px; margin-bottom: 8px; }
+.login-container p { color: var(--text-muted); margin-bottom: 30px; }
 
 .login-container input {
   width: 100%;
   padding: 16px;
-  background: var(--surface);
+  background: var(--bg-alt);
   border: 1px solid var(--border);
   border-radius: 12px;
-  color: white;
+  color: var(--text);
   font-size: 16px;
   margin-bottom: 12px;
+  outline: none;
 }
 
 .login-container button {
@@ -72,23 +85,26 @@ body, html {
   border: none;
   border-radius: 12px;
   color: white;
-  font-weight: bold;
+  font-weight: 600;
   font-size: 16px;
+  cursor: pointer;
 }
 
-/* Dashboard Header */
+.error { color: var(--error); font-size: 14px; margin-top: 10px; }
+
+/* Dashboard UI */
 .main-header, .term-header {
   padding: calc(var(--safe-top) + 10px) 20px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--border);
-  background: rgba(11, 16, 32, 0.8);
+  background: var(--surface);
   backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
 }
 
-.brand h1 { margin: 0; font-size: 18px; }
-.status-badge { font-size: 10px; color: #10b981; text-transform: uppercase; letter-spacing: 1px; }
+.brand h1 { margin: 0; font-size: 18px; font-weight: 700; }
+.status-badge { font-size: 10px; color: #10b981; text-transform: uppercase; font-weight: 700; }
 
 .dashboard-content {
   flex: 1;
@@ -114,93 +130,78 @@ body, html {
   margin-bottom: 16px;
 }
 
-.panel-header h2 { margin: 0; font-size: 14px; color: var(--text-muted); text-transform: uppercase; }
-
-.select-wrapper select {
-  width: 100%;
-  background: var(--bg);
-  color: white;
-  border: 1px solid var(--border);
-  padding: 12px;
-  border-radius: 12px;
-  font-size: 16px;
-}
+.panel-header h2 { margin: 0; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
 
 .cli-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 12px;
 }
 
-@media (min-width: 600px) {
-  .cli-grid { grid-template-columns: 1fr 1fr; }
-}
-
 .cli-card {
-  background: var(--surface);
+  background: var(--bg-alt);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 16px;
-  text-align: left;
-  color: inherit;
+  gap: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
 }
 
-.cli-card:active { background: var(--surface-active); transform: scale(0.98); }
+.cli-card:active { background: var(--surface-active); }
 
 .cli-icon {
-  width: 48px; height: 48px;
-  border-radius: 12px;
+  width: 40px; height: 40px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 20px;
+  font-weight: 800;
+  color: white;
 }
 
-.claude { background: #d97757; }
-.gemini { background: #4f8cff; }
-.bash { background: #3f3f46; }
-.git { background: #f1502f; }
+.cli-icon.claude { background: #d97757; }
+.cli-icon.gemini { background: #4285f4; }
+.cli-icon.bash { background: #2d3748; }
+.cli-icon.git { background: #f05032; }
 
-.cli-info h3 { margin: 0; font-size: 16px; }
-.cli-info p { margin: 0; font-size: 12px; color: var(--text-muted); }
-
-/* Terminal */
+/* Terminal Screen */
 #terminal-container {
   flex: 1;
   background: #000;
-  padding: 10px;
-  overflow: hidden;
+  position: relative;
 }
 
-.mobile-helper-bar {
+.mobile-tools {
   display: flex;
-  background: #000;
+  background: var(--bg-alt);
   padding: 8px;
-  gap: 6px;
+  gap: 8px;
   overflow-x: auto;
   border-top: 1px solid var(--border);
   padding-bottom: var(--safe-bottom);
 }
 
-.helper-btn {
-  flex: 0 0 auto;
-  min-width: 54px;
-  height: 40px;
-  background: #1e293b;
-  border: 1px solid #334155;
+.tool-btn {
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: white;
-  font-size: 11px;
-  font-weight: bold;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.helper-btn:active, .helper-btn.active { background: var(--accent); border-color: white; }
+.tool-btn:active { background: var(--accent); color: white; }
 
-/* Utilities */
-.text-btn { background: none; border: none; color: var(--accent); font-weight: 600; font-size: 14px; }
-.icon-btn { background: none; border: none; color: white; font-size: 20px; padding: 10px; }
-.error { color: #ff4f4f; font-size: 14px; margin-top: 10px; }
+.icon-btn {
+  background: none; border: none; font-size: 20px; color: var(--text); padding: 8px;
+}
+
+.text-btn {
+  background: none; border: none; color: var(--accent); font-weight: 600; font-size: 14px;
+}

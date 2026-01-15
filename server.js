@@ -18,18 +18,6 @@ const PROJECTS_DIR = path.join(__dirname, 'projects');
 // Session Store: Maps sessionId -> { process, lastUsed }
 const sessions = new Map();
 
-// Cleanup stale sessions every 30 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, session] of sessions.entries()) {
-    if (now - session.lastUsed > 30 * 60 * 1000) {
-      console.log(`Cleaning up stale session: ${id}`);
-      session.process.kill();
-      sessions.delete(id);
-    }
-  }
-}, 60000);
-
 if (!fs.existsSync(PROJECTS_DIR)) {
   fs.mkdirSync(PROJECTS_DIR, { recursive: true });
 }
@@ -39,12 +27,10 @@ app.use(express.json());
 
 // Auth Middleware for API
 const auth = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader === PASSWORD) next();
+  if (req.headers.authorization === PASSWORD) next();
   else res.status(401).send('Unauthorized');
 };
 
-// API: List Projects
 app.get('/api/projects', auth, (req, res) => {
   try {
     const projects = fs.readdirSync(PROJECTS_DIR).filter(file => 
@@ -56,14 +42,12 @@ app.get('/api/projects', auth, (req, res) => {
   }
 });
 
-// API: Clone Repo
 app.post('/api/projects/clone', auth, (req, res) => {
   const { url } = req.body;
-  if (!url) return res.status(400).send('URL required');
   const repoName = url.split('/').pop().replace('.git', '');
   const targetPath = path.join(PROJECTS_DIR, repoName);
-
-  if (fs.existsSync(targetPath)) return res.status(400).send('Project already exists');
+  
+  if (fs.existsSync(targetPath)) return res.status(400).send('Exists');
 
   exec(`git clone ${url}`, { cwd: PROJECTS_DIR }, (error) => {
     if (error) return res.status(500).send(error.message);
@@ -72,18 +56,23 @@ app.post('/api/projects/clone', auth, (req, res) => {
 });
 
 wss.on('connection', (ws) => {
-  let currentSessionId = null;
   let authenticated = false;
+  let currentPty = null;
 
   ws.on('message', (message) => {
-    const data = JSON.parse(message);
+    let data;
+    try {
+      data = JSON.parse(message);
+    } catch (e) { return; }
 
-    // 1. Authenticate first
+    // 1. Mandatory Auth First
     if (data.type === 'auth') {
       if (data.password === PASSWORD) {
         authenticated = true;
         ws.send(JSON.stringify({ type: 'authenticated' }));
+        console.log('Client authenticated successfully');
       } else {
+        console.log('Auth failed: invalid password');
         ws.send(JSON.stringify({ type: 'error', message: 'Invalid password' }));
       }
       return;
@@ -91,71 +80,65 @@ wss.on('connection', (ws) => {
 
     if (!authenticated) return;
 
-    // 2. Handle Terminal Spawning / Reattaching
+    // 2. Spawn or Reattach Terminal
     if (data.type === 'spawn') {
-      const { command, args, projectId, cols, rows } = data;
-      // Session ID is unique to the Command + Project
+      const { command, args = [], projectId, cols = 80, rows = 24 } = data;
       const sessionId = `${projectId || 'root'}-${command}`;
-      currentSessionId = sessionId;
+      const cwd = projectId ? path.join(PROJECTS_DIR, projectId) : __dirname;
 
       let session = sessions.get(sessionId);
 
       if (!session) {
-        const cwd = projectId ? path.join(PROJECTS_DIR, projectId) : PROJECTS_DIR;
-        const ptyProcess = pty.spawn(command || 'bash', args || [], {
+        console.log(`Spawning new session: ${sessionId}`);
+        const term = pty.spawn(command, args, {
           name: 'xterm-256color',
-          cols: cols || 80,
-          rows: rows || 24,
-          cwd: cwd,
+          cols,
+          rows,
+          cwd,
           env: { ...process.env, TERM: 'xterm-256color' }
         });
 
-        session = { process: ptyProcess, lastUsed: Date.now() };
-        sessions.set(sessionId, session);
-
-        ptyProcess.on('data', (data) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'data', data }));
-          }
+        session = { term, listeners: new Set() };
+        
+        term.onData((data) => {
+          const msg = JSON.stringify({ type: 'data', data });
+          session.listeners.forEach(l => l.send(msg));
         });
 
-        ptyProcess.on('exit', () => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'exit' }));
-          }
+        term.onExit(() => {
+          session.listeners.forEach(l => l.send(JSON.stringify({ type: 'exit' })));
           sessions.delete(sessionId);
         });
-      } else {
-        // Session exists, update activity and send current buffer hint
-        session.lastUsed = Date.now();
-        // Re-request full screen redraw from terminal apps
-        session.process.write('\x0c'); // Send Form Feed / Clear to force redraw
+
+        sessions.set(sessionId, session);
       }
 
-      // Re-send current session ID to client
-      ws.send(JSON.stringify({ type: 'ready', sessionId }));
-      return;
+      currentPty = session.term;
+      session.listeners.add(ws);
+      
+      // Send current state to new listener
+      ws.send(JSON.stringify({ type: 'data', data: '\r\n\x1b[32m-- Reattached to session --\x1b[0m\r\n' }));
     }
 
     // 3. Handle Input
-    if (data.type === 'input' && currentSessionId) {
-      const session = sessions.get(currentSessionId);
-      if (session) {
-        session.lastUsed = Date.now();
-        session.process.write(data.data);
-      }
+    if (data.type === 'input' && currentPty) {
+      currentPty.write(data.data);
     }
 
     // 4. Handle Resize
-    if (data.type === 'resize' && currentSessionId) {
-      const session = sessions.get(currentSessionId);
-      if (session) {
-        session.process.resize(data.cols, data.rows);
-      }
+    if (data.type === 'resize' && currentPty) {
+      currentPty.resize(data.cols, data.rows);
+    }
+  });
+
+  ws.on('close', () => {
+    for (const session of sessions.values()) {
+      session.listeners.delete(ws);
     }
   });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Pocket Terminal running at http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Auth Password set to: ${PASSWORD}`);
 });
