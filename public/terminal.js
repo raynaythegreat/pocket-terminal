@@ -102,28 +102,25 @@ function launchCLI(command, args = []) {
     term = new Terminal({
       cursorBlink: true,
       fontSize: 14,
-      fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       theme: {
         background: '#000000',
-        foreground: '#ffffff',
-        cursor: '#818cf8'
-      },
-      allowProposedApi: true
+        foreground: '#ffffff'
+      }
     });
     fitAddon = new FitAddon.FitAddon();
     term.loadAddon(fitAddon);
     term.open(document.getElementById('terminal-container'));
-    
+    fitAddon.fit();
+
     term.onData(data => {
-      if (socket.readyState === WebSocket.OPEN) {
-        if (ctrlActive) {
-          // Map characters to CTRL equivalents
-          const code = data.toUpperCase().charCodeAt(0) - 64;
-          socket.send(JSON.stringify({ type: 'input', data: String.fromCharCode(code) }));
-          setCtrl(false);
-        } else {
-          socket.send(JSON.stringify({ type: 'input', data }));
+      if (ctrlActive) {
+        const code = data.charCodeAt(0);
+        if (code >= 97 && code <= 122) { // a-z
+          socket.send(JSON.stringify({ type: 'data', data: String.fromCharCode(code - 96) }));
         }
+        toggleCtrl(); // Deactivate after one use
+      } else {
+        socket.send(JSON.stringify({ type: 'data', data }));
       }
     });
 
@@ -133,10 +130,8 @@ function launchCLI(command, args = []) {
     });
   }
 
-  // Clear terminal for new session
-  term.reset();
-  fitAddon.fit();
-
+  // Clear term before re-attach
+  term.clear();
   socket.send(JSON.stringify({
     type: 'spawn',
     command,
@@ -149,21 +144,21 @@ function launchCLI(command, args = []) {
 
 function sendKey(key) {
   if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: 'input', data: key }));
+    socket.send(JSON.stringify({ type: 'data', data: key }));
   }
-  if (term) term.focus();
 }
 
-function setCtrl(active) {
-  ctrlActive = active;
-  document.getElementById('ctrl-btn').classList.toggle('active', active);
+function toggleCtrl() {
+  ctrlActive = !ctrlActive;
+  document.getElementById('ctrl-toggle').classList.toggle('active', ctrlActive);
 }
-
-document.getElementById('ctrl-btn').onclick = () => setCtrl(!ctrlActive);
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
+  if (id === 'terminal-screen' && fitAddon) {
+    setTimeout(() => fitAddon.fit(), 100);
+  }
 }
 
 function closeTerminal() {
@@ -174,12 +169,3 @@ function logout() {
   sessionStorage.removeItem('pocket_pass');
   window.location.reload();
 }
-
-function init() {
-  // Fix for mobile viewport height issues
-  const vh = window.innerHeight * 0.01;
-  document.documentElement.style.setProperty('--vh', `${vh}px`);
-}
-
-window.addEventListener('resize', init);
-init();

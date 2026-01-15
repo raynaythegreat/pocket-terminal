@@ -12,7 +12,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
-// Use .trim() to ensure no accidental spaces in environment variables
+// Ensure password is trimmed and defaults to 'pocket' if not set
 const PASSWORD = (process.env.PASSWORD || 'pocket').trim();
 const PROJECTS_DIR = path.join(__dirname, 'projects');
 
@@ -82,7 +82,7 @@ wss.on('connection', (ws) => {
       msg = JSON.parse(message);
     } catch (e) { return; }
 
-    // 1. Mandatory Auth
+    // 1. Mandatory Auth Handshake
     if (msg.type === 'auth') {
       if (msg.password && msg.password.trim() === PASSWORD) {
         authenticated = true;
@@ -98,77 +98,66 @@ wss.on('connection', (ws) => {
     // 2. Terminal Lifecycle
     if (msg.type === 'spawn') {
       const { command, args = [], projectId, cols = 80, rows = 24 } = msg;
+      
+      // Persistence: Reuse existing session for this specific project/command combo
       sessionKey = `${projectId || 'root'}-${command}`;
-      const cwd = projectId ? path.join(PROJECTS_DIR, projectId) : __dirname;
-
-      let session = sessions.get(sessionKey);
-
-      // If session doesn't exist or process died, create new one
-      if (!session || !session.term) {
+      
+      if (!sessions.has(sessionKey)) {
+        const cwd = projectId ? path.join(PROJECTS_DIR, projectId) : __dirname;
+        
         const term = pty.spawn(command, args, {
-          name: 'xterm-256color',
-          cols,
-          rows,
-          cwd,
-          env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
+          name: 'xterm-color',
+          cols: cols,
+          rows: rows,
+          cwd: cwd,
+          env: { ...process.env, LANG: 'en_US.UTF-8', TERM: 'xterm-256color' }
         });
 
-        session = { term, ws: new Set() };
-        
+        sessions.set(sessionKey, { term, lastActive: Date.now() });
+
         term.onData((data) => {
-          session.ws.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({ type: 'data', data }));
-            }
-          });
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'data', data }));
+          }
         });
 
         term.onExit(() => {
-          session.ws.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({ type: 'exit' }));
-            }
-          });
           sessions.delete(sessionKey);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'exit' }));
+          }
         });
-
-        sessions.set(sessionKey, session);
+      } else {
+        // Re-attach: Send clear screen and signal session is ready
+        const existing = sessions.get(sessionKey);
+        existing.lastActive = Date.now();
+        // Force a redraw for the client
+        existing.term.write('\x1b[L'); 
       }
-
-      // Attach this connection to the session
-      session.ws.add(ws);
-      
-      // Trigger a resize to current client dimensions
-      session.term.resize(cols, rows);
-      
-      // Send a clear/refresh hint (optional)
-      ws.send(JSON.stringify({ type: 'data', data: '\r\n--- Reconnected to Session ---\r\n' }));
+      return;
     }
 
-    if (msg.type === 'input' && sessionKey) {
+    // 3. Data Handling
+    if (msg.type === 'data' && sessionKey) {
       const session = sessions.get(sessionKey);
-      if (session && session.term) {
-        session.term.write(msg.data);
-      }
+      if (session) session.term.write(msg.data);
     }
 
     if (msg.type === 'resize' && sessionKey) {
       const session = sessions.get(sessionKey);
-      if (session && session.term) {
-        session.term.resize(msg.cols, msg.rows);
-      }
+      if (session) session.term.resize(msg.cols, msg.rows);
     }
   });
 
   ws.on('close', () => {
-    if (sessionKey) {
-      const session = sessions.get(sessionKey);
-      if (session) session.ws.delete(ws);
+    // We don't kill the terminal on close to allow persistence
+    if (sessionKey && sessions.has(sessionKey)) {
+      sessions.get(sessionKey).lastActive = Date.now();
     }
   });
 });
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Pocket Terminal running on http://localhost:${PORT}`);
-  console.log(`Auth Password configured: ${PASSWORD ? 'YES' : 'NO (Using default: pocket)'}`);
+  console.log(`Password protection active.`);
 });

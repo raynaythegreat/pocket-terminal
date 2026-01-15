@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Pocket Terminal</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
   <link rel="stylesheet" href="style.css">
@@ -47,7 +48,7 @@
       <section class="panel">
         <span class="panel-title">Clone Repository</span>
         <input type="text" id="repo-url" placeholder="GitHub HTTPS URL" style="margin-bottom:8px; padding:12px; font-size:14px;">
-        <input type="password" id="repo-token" placeholder="Token (Optional for Private)" style="margin-bottom:12px; padding:12px; font-size:14px;">
+        <input type="password" id="repo-token" placeholder="Token (Required for Private Repos)" style="margin-bottom:12px; padding:12px; font-size:14px;">
         <button onclick="cloneRepo()" class="primary-btn" style="padding:12px; font-size:14px;">Clone to Workspace</button>
       </section>
 
@@ -64,12 +65,8 @@
             <span>Gemini</span>
           </button>
           <button class="cli-card" onclick="launchCLI('bash')">
-            <div class="cli-icon icon-bash">B</div>
-            <span>Bash</span>
-          </button>
-          <button class="cli-card" onclick="launchCLI('git', ['status'])">
-            <div class="cli-icon icon-git">G</div>
-            <span>Status</span>
+            <div class="cli-icon icon-bash">_</div>
+            <span>Terminal</span>
           </button>
         </div>
       </section>
@@ -78,21 +75,23 @@
 
   <!-- Terminal Screen -->
   <div id="terminal-screen" class="screen hidden">
-    <header class="term-header">
-      <button onclick="closeTerminal()" style="background:none; border:none; color:white; font-size: 14px; font-weight:600;">← Back</button>
-      <span id="term-title">Terminal</span>
-      <div style="width:40px"></div>
-    </header>
+    <div class="terminal-header">
+      <button onclick="closeTerminal()" class="back-btn">← Back</button>
+      <span id="term-title">Bash</span>
+      <div style="width: 60px;"></div>
+    </div>
+    
     <div id="terminal-container"></div>
-    <div class="mobile-tools">
-      <button class="tool-btn" id="ctrl-btn">CTRL</button>
-      <button class="tool-btn" onclick="sendKey('\t')">TAB</button>
-      <button class="tool-btn" onclick="sendKey('\x1b')">ESC</button>
-      <button class="tool-btn" onclick="sendKey('\x1b[A')">↑</button>
-      <button class="tool-btn" onclick="sendKey('\x1b[B')">↓</button>
-      <button class="tool-btn" onclick="sendKey('\x1b[D')">←</button>
-      <button class="tool-btn" onclick="sendKey('\x1b[C')">→</button>
-      <button class="tool-btn" onclick="sendKey('/')">/</button>
+
+    <!-- Mobile Helper Bar -->
+    <div id="mobile-bar">
+      <button onclick="sendKey('\t')">TAB</button>
+      <button id="ctrl-toggle" onclick="toggleCtrl()">CTRL</button>
+      <button onclick="sendKey('\x1b')">ESC</button>
+      <button onclick="sendKey('\x1b[A')">↑</button>
+      <button onclick="sendKey('\x1b[B')">↓</button>
+      <button onclick="sendKey('\x1b[D')">←</button>
+      <button onclick="sendKey('\x1b[C')">→</button>
     </div>
   </div>
 
