@@ -4,8 +4,16 @@ const WebSocket = require("ws");
 const pty = require("node-pty");
 const path = require("path");
 const fs = require("fs");
-const crypto = require("crypto");
 require("dotenv").config();
+
+const {
+  hashPassword,
+  verifyPassword,
+  createSession,
+  isValidSession,
+  revokeSession,
+  buildPasswordConfig,
+} = require("./auth");
 
 const app = express();
 const server = http.createServer(app);
@@ -14,46 +22,34 @@ const wss = new WebSocket.Server({ server });
 const PORT = process.env.PORT || 3000;
 
 // ---------------------------------------------------------------------------
-// Secure password handling
+// Password + auth configuration
 // ---------------------------------------------------------------------------
-const RAW_PASSWORD = (process.env.TERMINAL_PASSWORD || "Superprimitive69!").trim();
-if (process.env.TERMINAL_PASSWORD === undefined) {
-  console.warn("⚠️ WARNING: TERMINAL_PASSWORD not set. Using default fallback.");
-}
-
-const PASSWORD_HASH = crypto.createHash("sha256").update(RAW_PASSWORD).digest("hex");
-
-function hashPassword(pwd) {
-  return crypto.createHash("sha256").update(String(pwd || "").trim()).digest("hex");
-}
+const { mode: PASSWORD_MODE, passwordHash: PASSWORD_HASH } = buildPasswordConfig(
+  {
+    TERMINAL_PASSWORD: process.env.TERMINAL_PASSWORD,
+    NODE_ENV: process.env.NODE_ENV,
+  },
+  console
+);
 
 // ---------------------------------------------------------------------------
 // Session token handling
 // ---------------------------------------------------------------------------
-const SESSION_TTL_MS = Number(process.env.SESSION_TTL_MS || 1000 * 60 * 60 * 24 * 7); // 7 days
+const SESSION_TTL_MS = Number(
+  process.env.SESSION_TTL_MS || 1000 * 60 * 60 * 24 * 7
+); // 7 days
 const sessions = new Map(); // token -> { expiresAt: number }
 
-function createSession() {
-  const token = crypto.randomBytes(32).toString("hex");
-  const expiresAt = Date.now() + SESSION_TTL_MS;
-  sessions.set(token, { expiresAt });
-  return token;
+function createNewSession() {
+  return createSession(sessions, SESSION_TTL_MS);
 }
 
-function isValidSession(token) {
-  if (!token) return false;
-  const entry = sessions.get(token);
-  if (!entry) return false;
-  if (Date.now() > entry.expiresAt) {
-    sessions.delete(token);
-    return false;
-  }
-  return true;
+function isSessionValid(token) {
+  return isValidSession(sessions, token);
 }
 
-function revokeSession(token) {
-  if (!token) return;
-  sessions.delete(token);
+function revokeSessionToken(token) {
+  revokeSession(sessions, token);
 }
 
 // periodic cleanup
@@ -84,172 +80,216 @@ function getBearerToken(req) {
 
 function requireAuth(req, res, next) {
   const token = getBearerToken(req);
-  if (!isValidSession(token)) return res.status(401).json({ success: false, error: "unauthorized" });
+  if (!isSessionValid(token)) {
+    return res.status(401).json({ success: false, error: "unauthorized" });
+  }
   req.sessionToken = token;
   next();
 }
 
 // ---------------------------------------------------------------------------
-// Auth endpoints
+// Auth routes
 // ---------------------------------------------------------------------------
 app.post("/auth", (req, res) => {
-  const { password } = req.body || {};
-  if (password && hashPassword(password) === PASSWORD_HASH) {
-    const token = createSession();
-    return res.json({ success: true, token, expiresInMs: SESSION_TTL_MS });
-  }
-  return res.status(401).json({ success: false, error: "invalid_password" });
-});
-
-app.post("/logout", requireAuth, (req, res) => {
-  revokeSession(req.sessionToken);
-  res.json({ success: true });
-});
-
-app.get("/me", (req, res) => {
-  const token = getBearerToken(req);
-  if (!isValidSession(token)) return res.status(401).json({ success: false });
-  return res.json({ success: true });
-});
-
-// ---------------------------------------------------------------------------
-// Utility: nice error text when tool isn't installed
-// ---------------------------------------------------------------------------
-function missingToolHelp(cmd) {
-  const lines = [];
-  lines.push("");
-  lines.push("Pocket Terminal: command not available on this server.");
-  lines.push(`Requested: ${cmd}`);
-  lines.push("");
-  lines.push("This deployment uses 'best effort' optional installs for AI CLIs to avoid build failures.");
-  lines.push("If you want this tool available here, install it in the environment, e.g.:");
-  lines.push("");
-  lines.push(`  npm i -g ${cmd}`);
-  lines.push("  # or add the package back into dependencies and redeploy (may fail if GitHub downloads are blocked).");
-  lines.push("");
-  return lines.join("\r\n");
-}
-
-// ---------------------------------------------------------------------------
-// WebSocket Terminal handling
-// Protocol:
-// - client sends: {"type":"auth","token":"..."} first
-// - server replies: {"type":"auth_ok"} or {"type":"auth_failed"}
-// - client sends: {"type":"start","cmd":"bash","args":[],"cwd":""}
-// - server replies: {"type":"data","data":"..."} / {"type":"exit","code":0}
-// ---------------------------------------------------------------------------
-wss.on("connection", (ws) => {
-  let authed = false;
-  let term = null;
-
-  function safeSend(obj) {
-    try {
-      ws.send(JSON.stringify(obj));
-    } catch (_) {
-      // ignore
-    }
-  }
-
-  ws.on("message", (raw) => {
-    let msg;
-    try {
-      msg = JSON.parse(String(raw));
-    } catch (_) {
-      return;
-    }
-
-    if (!authed) {
-      if (msg && msg.type === "auth") {
-        if (isValidSession(msg.token)) {
-          authed = true;
-          safeSend({ type: "auth_ok" });
-        } else {
-          safeSend({ type: "auth_failed" });
-          try {
-            ws.close(4001, "unauthorized");
-          } catch (_) {}
-        }
-      }
-      return;
-    }
-
-    if (msg && msg.type === "start") {
-      if (term) {
-        try {
-          term.kill();
-        } catch (_) {}
-        term = null;
-      }
-
-      const cmd = String(msg.cmd || "").trim();
-      const args = Array.isArray(msg.args) ? msg.args.map((a) => String(a)) : [];
-      const cwd = msg.cwd ? path.resolve(PROJECTS_DIR, String(msg.cwd)) : PROJECTS_DIR;
-
-      if (!cmd) {
-        safeSend({ type: "data", data: "\r\nMissing command.\r\n" });
-        return;
-      }
-
-      try {
-        term = pty.spawn(cmd, args, {
-          name: "xterm-256color",
-          cols: 80,
-          rows: 24,
-          cwd,
-          env: process.env,
-        });
-      } catch (err) {
-        // Common case: ENOENT (binary missing)
-        const code = err && err.code ? String(err.code) : "SPAWN_ERROR";
-        const message =
-          code === "ENOENT"
-            ? missingToolHelp(cmd)
-            : `\r\nPocket Terminal: failed to start command.\r\n${cmd}\r\nError: ${String(
-                err && err.message ? err.message : err
-              )}\r\n`;
-        safeSend({ type: "data", data: message });
-        safeSend({ type: "exit", code: 127 });
-        return;
-      }
-
-      term.onData((data) => safeSend({ type: "data", data }));
-      term.onExit(({ exitCode }) => {
-        safeSend({ type: "exit", code: exitCode });
-        term = null;
+  try {
+    if (PASSWORD_MODE === "misconfigured") {
+      // In production with no TERMINAL_PASSWORD set.
+      return res.status(503).json({
+        success: false,
+        error: "server_misconfigured",
+        message:
+          "Authentication is not configured. Admin must set TERMINAL_PASSWORD.",
       });
-
-      return;
     }
 
-    if (msg && msg.type === "data" && term) {
+    if (!req.body || typeof req.body.password !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "invalid_request",
+        message: "Password is required.",
+      });
+    }
+
+    const { password } = req.body;
+
+    if (!verifyPassword(password, PASSWORD_HASH)) {
+      return res.status(401).json({
+        success: false,
+        error: "invalid_password",
+        message: "Invalid password.",
+      });
+    }
+
+    const token = createNewSession();
+
+    return res.json({
+      success: true,
+      token,
+      sessionTtlMs: SESSION_TTL_MS,
+    });
+  } catch (err) {
+    console.error("Error in /auth:", err);
+    return res.status(500).json({
+      success: false,
+      error: "internal_error",
+      message: "Internal server error.",
+    });
+  }
+});
+
+app.post("/auth/logout", (req, res) => {
+  try {
+    const token = getBearerToken(req) || (req.body && req.body.token) || null;
+    if (token) {
+      revokeSessionToken(token);
+    }
+    return res.json({ success: true });
+  } catch (err) {
+    console.error("Error in /auth/logout:", err);
+    return res.status(500).json({
+      success: false,
+      error: "internal_error",
+      message: "Internal server error.",
+    });
+  }
+});
+
+app.get("/auth/status", (req, res) => {
+  try {
+    const nodeEnv = process.env.NODE_ENV || "development";
+    const isProd = nodeEnv === "production";
+
+    const payload = {
+      authConfigured: PASSWORD_MODE !== "misconfigured",
+    };
+
+    // In non-production we can expose more detailed mode info for diagnostics.
+    if (!isProd) {
+      payload.mode = PASSWORD_MODE;
+    }
+
+    return res.json(payload);
+  } catch (err) {
+    console.error("Error in /auth/status:", err);
+    return res.status(500).json({
+      success: false,
+      error: "internal_error",
+      message: "Internal server error.",
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// WebSocket + PTY handling
+// ---------------------------------------------------------------------------
+wss.on("connection", (ws, req) => {
+  // Extract token from query string: ws://...?token=...
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const token = url.searchParams.get("token");
+
+  if (!isSessionValid(token)) {
+    ws.close(4001, "unauthorized");
+    return;
+  }
+
+  // Spawn a shell
+  const shell =
+    process.env.SHELL ||
+    (process.platform === "win32" ? "powershell.exe" : "bash");
+
+  const ptyProcess = pty.spawn(shell, [], {
+    name: "xterm-color",
+    cols: 80,
+    rows: 24,
+    cwd: PROJECTS_DIR,
+    env: process.env,
+  });
+
+  ptyProcess.on("data", (data) => {
+    try {
+      ws.send(data);
+    } catch (err) {
+      console.error("Error sending data over WS:", err);
+    }
+  });
+
+  ws.on("message", (msg) => {
+    try {
+      const text =
+        typeof msg === "string" ? msg : Buffer.from(msg).toString("utf8");
+      // Support resize messages: {"type":"resize","cols":n,"rows":m}
       try {
-        term.write(String(msg.data || ""));
-      } catch (_) {}
-      return;
-    }
-
-    if (msg && msg.type === "resize" && term) {
-      const cols = Number(msg.cols || 0);
-      const rows = Number(msg.rows || 0);
-      if (Number.isFinite(cols) && Number.isFinite(rows) && cols > 0 && rows > 0) {
-        try {
-          term.resize(cols, rows);
-        } catch (_) {}
+        const parsed = JSON.parse(text);
+        if (
+          parsed &&
+          parsed.type === "resize" &&
+          Number.isInteger(parsed.cols) &&
+          Number.isInteger(parsed.rows)
+        ) {
+          ptyProcess.resize(parsed.cols, parsed.rows);
+          return;
+        }
+      } catch {
+        // Not JSON; treat as regular input
       }
-      return;
+
+      ptyProcess.write(text);
+    } catch (err) {
+      console.error("Error handling WS message:", err);
     }
   });
 
   ws.on("close", () => {
-    if (term) {
-      try {
-        term.kill();
-      } catch (_) {}
-      term = null;
+    try {
+      ptyProcess.kill();
+    } catch (err) {
+      console.error("Error killing PTY on WS close:", err);
+    }
+  });
+
+  ws.on("error", (err) => {
+    console.error("WebSocket error:", err);
+    try {
+      ptyProcess.kill();
+    } catch (e) {
+      console.error("Error killing PTY on WS error:", e);
     }
   });
 });
 
+// ---------------------------------------------------------------------------
+// API routes (example protected route)
+// ---------------------------------------------------------------------------
+app.get("/projects", requireAuth, (req, res) => {
+  try {
+    if (!fs.existsSync(PROJECTS_DIR)) {
+      return res.json({ success: true, projects: [] });
+    }
+
+    const entries = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true });
+    const projects = entries
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+
+    res.json({ success: true, projects });
+  } catch (err) {
+    console.error("Error in /projects:", err);
+    res.status(500).json({
+      success: false,
+      error: "internal_error",
+      message: "Internal server error.",
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Static file handling + server start
+// ---------------------------------------------------------------------------
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
+
 server.listen(PORT, () => {
-  console.log(`Pocket Terminal running on port ${PORT}`);
+  console.log(`Pocket Terminal listening on http://localhost:${PORT}`);
 });
