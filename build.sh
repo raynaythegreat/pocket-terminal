@@ -8,6 +8,18 @@ SKIP_OPTIONAL_TOOLS="${SKIP_OPTIONAL_TOOLS:-0}"
 
 mkdir -p ./bin
 
+# Render/CI should be production installs by default (avoid dev deps like vitest).
+export NODE_ENV="${NODE_ENV:-production}"
+
+# Use a clean per-build npm cache directory to avoid corrupted restored caches (EINTEGRITY).
+NPM_CACHE_DIR="${NPM_CACHE_DIR:-}"
+if [ -z "$NPM_CACHE_DIR" ]; then
+  NPM_CACHE_DIR="$(mktemp -d)"
+fi
+export npm_config_cache="$NPM_CACHE_DIR"
+rm -rf "$npm_config_cache" >/dev/null 2>&1 || true
+mkdir -p "$npm_config_cache"
+
 # Ensure we use the public npm registry (avoid mirror/CDN inconsistencies).
 npm config set registry "https://registry.npmjs.org/" >/dev/null
 
@@ -16,13 +28,28 @@ npm config set fetch-retries 5 >/dev/null
 npm config set fetch-retry-mintimeout 20000 >/dev/null
 npm config set fetch-retry-maxtimeout 120000 >/dev/null
 
-# Clear npm cache to avoid corrupted tarballs causing EINTEGRITY failures.
-# This trades build speed for reliability on hosted CI/build environments.
-npm cache clean --force >/dev/null || true
+run_npm_install() {
+  if [ -f package-lock.json ]; then
+    npm ci --omit=dev --no-audit --no-fund
+  else
+    npm install --omit=dev --no-audit --no-fund
+  fi
+}
 
-# Install dependencies. We intentionally use npm install (not npm ci) because
-# the repo's lockfile may drift during rapid iteration and Render uses a cached environment.
-npm install --no-audit --no-fund
+# Retry once on EINTEGRITY (seen on Render when caches/registries serve bad tarballs).
+install_log="/tmp/npm-install.log"
+if ! run_npm_install 2>&1 | tee "$install_log"; then
+  if grep -q "EINTEGRITY" "$install_log"; then
+    echo "npm install hit EINTEGRITY; retrying with a fresh npm cache..."
+    rm -rf "$npm_config_cache" >/dev/null 2>&1 || true
+    mkdir -p "$npm_config_cache"
+    rm -rf node_modules >/dev/null 2>&1 || true
+    run_npm_install
+  else
+    echo "npm install failed (see $install_log)"
+    exit 1
+  fi
+fi
 
 # Ensure local tool scripts are executable if they exist.
 if [ -f "./kimi" ]; then
