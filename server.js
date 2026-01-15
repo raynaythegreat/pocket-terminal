@@ -84,14 +84,18 @@ wss.on('connection', (ws) => {
 
     if (data.type === 'spawn') {
       const { command, args, projectId } = data;
+      // Start in specific project folder or root projects dir
       const cwd = projectId ? path.join(PROJECTS_DIR, projectId) : PROJECTS_DIR;
 
-      ptyProcess = pty.spawn(command, args || [], {
-        name: 'xterm-color',
+      // Kill existing process if any
+      if (ptyProcess) ptyProcess.kill();
+
+      ptyProcess = pty.spawn(command || 'bash', args || [], {
+        name: 'xterm-256color',
         cols: data.cols || 80,
         rows: data.rows || 24,
         cwd: cwd,
-        env: process.env
+        env: { ...process.env, TERM: 'xterm-256color' }
       });
 
       ptyProcess.on('data', (data) => {
@@ -119,5 +123,5 @@ wss.on('connection', (ws) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Pocket Terminal running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });

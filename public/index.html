@@ -14,12 +14,12 @@
   <!-- Login Screen -->
   <div id="login-screen" class="screen">
     <div class="login-container">
-      <button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">🌓</button>
+      <div class="glow-orb"></div>
       <h1>Pocket Terminal</h1>
-      <p>AI-Powered Mobile Workspace</p>
+      <p>Mobile-First AI Workspace</p>
       <form id="login-form">
-        <input type="password" id="password" placeholder="Enter Access Password" required>
-        <button type="submit">Unlock Workspace</button>
+        <input type="password" id="password" placeholder="Access Password" required autocomplete="current-password">
+        <button type="submit">Unlock</button>
       </form>
       <p id="login-error" class="error"></p>
     </div>
@@ -29,92 +29,77 @@
   <div id="launcher-screen" class="screen hidden">
     <header class="main-header">
       <div class="brand">
-        <span class="logo">⚡</span>
+        <span class="logo-icon">⚡</span>
         <div>
-          <h1>Pocket Terminal</h1>
+          <h1>Workspace</h1>
           <span id="connection-status" class="status-badge">Connected</span>
         </div>
       </div>
-      <div class="header-actions">
-        <button class="theme-toggle" data-theme-toggle>🌓</button>
-        <button id="logout-btn">Exit</button>
-      </div>
+      <button id="logout-btn" class="icon-btn">✕</button>
     </header>
 
     <main class="dashboard-content">
-      <!-- Project Section -->
-      <section class="panel project-panel">
+      <section class="panel">
         <div class="panel-header">
-          <h2>Your Projects</h2>
+          <h2>Project</h2>
           <div class="panel-actions">
-            <button id="clone-repo-btn" class="small-btn">+ Clone Repo</button>
-            <button id="new-project-btn" class="small-btn">+ New</button>
+            <button id="clone-repo-btn" class="text-btn">+ Clone</button>
           </div>
         </div>
-        <div class="project-selector-container">
+        <div class="select-wrapper">
           <select id="project-select">
             <option value="">Select a repository...</option>
           </select>
         </div>
       </section>
 
-      <!-- CLI Grid -->
-      <section class="panel cli-panel">
+      <section class="panel">
         <div class="panel-header">
-          <h2>Launch AI Assistant</h2>
-          <span class="hint">Will open in selected project</span>
+          <h2>Launch CLI</h2>
+          <span class="hint">Context: <span id="current-ctx">Root</span></span>
         </div>
         <div class="cli-grid">
-          <button class="cli-card" data-cmd="claude" data-args="config,setup">
+          <button class="cli-card" data-cmd="claude" data-args="">
             <div class="cli-icon claude">C</div>
-            <div class="cli-info">
-              <h3>Claude Code</h3>
-              <p>Anthropic's CLI agent</p>
-            </div>
+            <div class="cli-info"><h3>Claude</h3><p>Anthropic</p></div>
           </button>
           <button class="cli-card" data-cmd="gemini" data-args="chat">
             <div class="cli-icon gemini">G</div>
-            <div class="cli-info">
-              <h3>Gemini</h3>
-              <p>Google AI assistant</p>
-            </div>
+            <div class="cli-info"><h3>Gemini</h3><p>Google</p></div>
           </button>
-          <button class="cli-card" data-cmd="gh" data-args="copilot,suggest">
-            <div class="cli-icon copilot">🐙</div>
-            <div class="cli-info">
-              <h3>Copilot</h3>
-              <p>GitHub CLI agent</p>
-            </div>
+          <button class="cli-card" data-cmd="bash" data-args="">
+            <div class="cli-icon bash">B</div>
+            <div class="cli-info"><h3>Bash</h3><p>Terminal</p></div>
           </button>
-          <button class="cli-card" data-cmd="bash">
-            <div class="cli-icon terminal">>_</div>
-            <div class="cli-info">
-              <h3>Bash</h3>
-              <p>Standard terminal</p>
-            </div>
+          <button class="cli-card" data-cmd="git" data-args="status">
+            <div class="cli-icon git">G</div>
+            <div class="cli-info"><h3>Git</h3><p>Source</p></div>
           </button>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- Terminal Screen -->
+  <!-- Terminal View -->
   <div id="terminal-screen" class="screen hidden">
-    <div class="terminal-header">
-      <button id="back-to-launcher">← Dashboard</button>
-      <div id="active-cli-title">Terminal</div>
-      <button id="clear-terminal">Clear</button>
+    <div class="term-header">
+      <button id="back-to-launcher" class="back-btn">← Back</button>
+      <div id="term-title">bash</div>
+      <button id="clear-term" class="icon-btn">🗑️</button>
     </div>
+    
     <div id="terminal-container"></div>
-    <!-- Mobile Helper Keys -->
-    <div class="mobile-keys">
-      <button class="key-btn" data-key="Tab">TAB</button>
-      <button class="key-btn" data-key="Control">CTRL</button>
-      <button class="key-btn" data-key="Escape">ESC</button>
-      <button class="key-btn" data-key="ArrowUp">↑</button>
-      <button class="key-btn" data-key="ArrowDown">↓</button>
-      <button class="key-btn" data-key="ArrowLeft">←</button>
-      <button class="key-btn" data-key="ArrowRight">→</button>
+
+    <div class="mobile-helper-bar">
+      <button class="helper-key" data-key="Tab">TAB</button>
+      <button class="helper-key" data-key="Control">CTRL</button>
+      <button class="helper-key" data-key="Escape">ESC</button>
+      <button class="helper-key" data-key="ArrowUp">↑</button>
+      <button class="helper-key" data-key="ArrowDown">↓</button>
+      <button class="helper-key" data-key="ArrowLeft">←</button>
+      <button class="helper-key" data-key="ArrowRight">→</button>
+      <button class="helper-key" data-key="|">|</button>
+      <button class="helper-key" data-key="-">-</button>
     </div>
   </div>
 
