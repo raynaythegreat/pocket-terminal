@@ -8,95 +8,117 @@
   <title>Pocket Terminal</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
 </head>
 <body>
+  <!-- Toast Notifications -->
+  <div id="toast" class="toast hidden"></div>
+
   <!-- Login Screen -->
   <div id="login-screen" class="screen">
     <div class="login-container">
+      <div class="app-logo">
+        <div class="logo-icon">>_</div>
+      </div>
       <h1>Pocket Terminal</h1>
-      <p>Secure Mobile Workspace</p>
+      <p>Secure Mobile Cloud Workspace</p>
       <form id="login-form">
-        <input type="password" id="password" placeholder="Access Password" required autocomplete="current-password">
-        <button type="submit" class="primary-btn" style="width: 100%; margin-top: 16px;">Unlock</button>
+        <div class="input-group">
+          <input type="password" id="password" placeholder="Access Password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="primary-btn full-width">Unlock Workspace</button>
       </form>
-      <span id="login-error" class="error-text"></span>
+      <div id="login-error" class="error-text"></div>
     </div>
   </div>
 
   <!-- Dashboard Screen -->
   <div id="launcher-screen" class="screen hidden">
     <header class="main-header">
-      <div>
-        <h2 style="margin:0; font-size: 18px;">Workspace</h2>
-        <div style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
-          <span id="status-dot" style="width: 8px; height: 8px; background: var(--success); border-radius: 50%;"></span>
-          <span id="status-text" class="text-xs" style="color: var(--text-muted); font-weight: 600;">CONNECTED</span>
+      <div class="header-left">
+        <h2 class="brand">Workspace</h2>
+        <div class="status-indicator">
+          <span id="status-dot" class="dot offline"></span>
+          <span id="status-text" class="status-label">DISCONNECTED</span>
         </div>
       </div>
-      <button onclick="logout()" style="background: var(--bg-alt); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 10px; font-size: 13px; font-weight: 500;">Logout</button>
+      <button onclick="logout()" class="secondary-btn btn-sm">Logout</button>
     </header>
 
     <main class="dashboard-content">
-      <!-- Project Selection -->
+      <!-- Active Project Selection -->
       <section class="panel">
-        <span class="panel-title">Active Environment</span>
-        <div class="card" style="padding: 0; border: none;">
+        <h3 class="panel-title">Active Environment</h3>
+        <div class="card select-card">
           <select id="project-select">
-            <option value="">Root Project</option>
+            <option value="">Root Environment</option>
           </select>
+          <div class="select-arrow"></div>
         </div>
       </section>
 
-      <!-- Quick Launch Grid -->
+      <!-- AI CLI Tools Grid -->
       <section class="panel">
-        <span class="panel-title">AI CLI Tools</span>
+        <h3 class="panel-title">AI CLI Tools</h3>
         <div class="cli-grid">
           <div class="cli-card" onclick="launchCLI('claude-code')">
             <div class="cli-icon icon-claude">C</div>
-            <span class="text-sm">Claude</span>
+            <span class="cli-name">Claude</span>
           </div>
           <div class="cli-card" onclick="launchCLI('gemini', ['chat'])">
             <div class="cli-icon icon-gemini">G</div>
-            <span class="text-sm">Gemini</span>
+            <span class="cli-name">Gemini</span>
           </div>
           <div class="cli-card" onclick="launchCLI('copilot')">
-            <div class="cli-icon icon-gpt">P</div>
-            <span class="text-sm">Copilot</span>
+            <div class="cli-icon icon-copilot">P</div>
+            <span class="cli-name">Copilot</span>
           </div>
-          <div class="cli-card" onclick="launchCLI('grok')">
-            <div class="cli-icon icon-grok">x</div>
-            <span class="text-sm">Grok</span>
+          <div class="cli-card" onclick="launchCLI('kilocode')">
+            <div class="cli-icon icon-kilo">K</div>
+            <span class="cli-name">Kilo</span>
           </div>
         </div>
       </section>
 
-      <!-- Clone Repo -->
+      <!-- Actions Section -->
       <section class="panel">
-        <span class="panel-title">Import Project</span>
-        <div class="card" style="display: flex; flex-direction: column; gap: 12px;">
-          <input type="text" id="repo-url" placeholder="GitHub Repository URL">
-          <input type="password" id="repo-token" placeholder="Personal Access Token (optional)">
-          <button id="clone-btn" onclick="cloneRepo()" class="primary-btn">Clone Repository</button>
+        <h3 class="panel-title">Quick Actions</h3>
+        <div class="actions-stack">
+          <button onclick="launchCLI('bash')" class="card-action">
+            <div class="action-icon">$_</div>
+            <div class="action-info">
+              <span class="action-label">Open Bash Terminal</span>
+              <span class="action-desc">Standard shell access</span>
+            </div>
+          </button>
+          
+          <div class="card clone-card">
+            <input type="text" id="repo-url" placeholder="https://github.com/user/repo" class="ghost-input">
+            <button onclick="cloneRepo()" class="primary-btn btn-sm">Clone Repo</button>
+          </div>
         </div>
       </section>
     </main>
   </div>
 
   <!-- Terminal Screen (Overlay) -->
-  <div id="terminal-screen" class="screen hidden">
-    <div class="terminal-header">
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">Terminal</span>
-        <span id="active-cmd" style="font-size: 12px; padding: 2px 8px; background: var(--bg-alt); border-radius: 4px; color: var(--primary);">bash</span>
+  <div id="terminal-screen" class="screen hidden terminal-overlay">
+    <header class="terminal-header">
+      <div class="terminal-info">
+        <span class="terminal-tag">ACTIVE SESSION</span>
+        <span id="terminal-title" class="terminal-name">bash</span>
       </div>
-      <button onclick="closeTerminal()" style="background: var(--error); border: none; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px;">✕</button>
-    </div>
+      <button onclick="closeTerminal()" class="close-btn">
+        <span>Exit Terminal</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </header>
     <div id="terminal-container"></div>
   </div>
-
-  <div id="toast" class="toast hidden"></div>
 
   <script src="terminal.js"></script>
 </body>
