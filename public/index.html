@@ -80,26 +80,28 @@
     </main>
   </div>
 
-  <!-- Terminal View -->
+  <!-- Terminal Screen -->
   <div id="terminal-screen" class="screen hidden">
-    <div class="term-header">
-      <button id="back-to-launcher" class="back-btn">← Back</button>
-      <div id="term-title">bash</div>
-      <button id="clear-term" class="icon-btn">🗑️</button>
-    </div>
+    <header class="term-header">
+      <button id="back-btn" class="icon-btn">←</button>
+      <h2 id="term-title">Terminal</h2>
+      <div class="term-actions">
+        <button id="clear-btn" class="text-btn">Clear</button>
+      </div>
+    </header>
     
     <div id="terminal-container"></div>
 
+    <!-- Mobile Helper Bar -->
     <div class="mobile-helper-bar">
-      <button class="helper-key" data-key="Tab">TAB</button>
-      <button class="helper-key" data-key="Control">CTRL</button>
-      <button class="helper-key" data-key="Escape">ESC</button>
-      <button class="helper-key" data-key="ArrowUp">↑</button>
-      <button class="helper-key" data-key="ArrowDown">↓</button>
-      <button class="helper-key" data-key="ArrowLeft">←</button>
-      <button class="helper-key" data-key="ArrowRight">→</button>
-      <button class="helper-key" data-key="|">|</button>
-      <button class="helper-key" data-key="-">-</button>
+      <button class="helper-btn" data-key="tab">TAB</button>
+      <button class="helper-btn" data-key="ctrl">CTRL</button>
+      <button class="helper-btn" data-key="esc">ESC</button>
+      <button class="helper-btn" data-key="up">↑</button>
+      <button class="helper-btn" data-key="down">↓</button>
+      <button class="helper-btn" data-key="left">←</button>
+      <button class="helper-btn" data-key="right">→</button>
+      <button class="helper-btn" data-key="ctrl-c">^C</button>
     </div>
   </div>
 

@@ -3,6 +3,7 @@ let term;
 let fitAddon;
 let authToken = null;
 let currentProjectId = null;
+let ctrlPressed = false;
 
 // DOM Elements
 const loginScreen = document.getElementById('login-screen');
@@ -47,6 +48,10 @@ function connect(password) {
   socket.onclose = () => {
     document.getElementById('connection-status').innerText = 'Disconnected';
     document.getElementById('connection-status').style.color = 'red';
+    // Attempt auto-reconnect if we were already authenticated
+    if (authToken) {
+      setTimeout(() => connect(authToken), 2000);
+    }
   };
 }
 
@@ -75,6 +80,12 @@ projectSelect.onchange = (e) => {
   ctxLabel.innerText = currentProjectId || 'Root';
 };
 
+document.querySelectorAll('.cli-card').forEach(card => {
+  card.onclick = () => {
+    startTerminal(card.dataset.cmd, card.dataset.args ? [card.dataset.args] : []);
+  };
+});
+
 document.getElementById('clone-repo-btn').onclick = async () => {
   const url = prompt('GitHub Repository URL:');
   if (!url) return;
@@ -86,7 +97,7 @@ document.getElementById('clone-repo-btn').onclick = async () => {
       body: JSON.stringify({ url })
     });
     if (res.ok) loadProjects();
-    else alert('Clone failed. Check server logs.');
+    else alert('Clone failed.');
   } catch (err) {
     alert('Request failed');
   }
@@ -112,67 +123,63 @@ function startTerminal(command, args = []) {
     
     term.onData(data => {
       if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'data', data }));
+        socket.send(JSON.stringify({ type: 'input', data }));
       }
     });
 
-    window.addEventListener('resize', () => fitAddon.fit());
-  } else {
-    term.clear();
+    window.addEventListener('resize', () => {
+      fitAddon.fit();
+      socket.send(JSON.stringify({ 
+        type: 'resize', cols: term.cols, rows: term.rows 
+      }));
+    });
   }
 
-  fitAddon.fit();
-
-  socket.send(JSON.stringify({
-    type: 'spawn',
-    command,
-    args,
-    projectId: currentProjectId,
-    cols: term.cols,
-    rows: term.rows
-  }));
+  // Brief delay to ensure container is rendered before fit
+  setTimeout(() => {
+    fitAddon.fit();
+    socket.send(JSON.stringify({
+      type: 'spawn',
+      command,
+      args,
+      projectId: currentProjectId,
+      cols: term.cols,
+      rows: term.rows
+    }));
+  }, 100);
 }
 
 function exitTerminal() {
   terminalScreen.classList.add('hidden');
   launcherScreen.classList.remove('hidden');
+  if (term) term.clear();
 }
 
-document.getElementById('back-to-launcher').onclick = () => {
-  // We don't kill the process immediately to allow background tasks, 
-  // but for this UI we return to dashboard.
-  exitTerminal();
+document.getElementById('back-btn').onclick = () => {
+  terminalScreen.classList.add('hidden');
+  launcherScreen.classList.remove('hidden');
 };
 
-document.getElementById('clear-term').onclick = () => term.clear();
+document.getElementById('clear-btn').onclick = () => term && term.clear();
 
-// CLI Card Click Handlers
-document.querySelectorAll('.cli-card').forEach(card => {
-  card.onclick = () => {
-    const cmd = card.dataset.cmd;
-    const args = card.dataset.args ? card.dataset.args.split(',') : [];
-    startTerminal(cmd, args);
-  };
-});
-
-// Mobile Helper Keys
-document.querySelectorAll('.helper-key').forEach(btn => {
+// Mobile Helper Bar Logic
+document.querySelectorAll('.helper-btn').forEach(btn => {
   btn.onclick = (e) => {
-    e.preventDefault();
     const key = btn.dataset.key;
-    
-    let sequence = key;
-    if (key === 'Control') sequence = '\x03'; // Map CTRL to Ctrl+C for now, or handle modifier state
-    if (key === 'Tab') sequence = '\t';
-    if (key === 'Escape') sequence = '\x1b';
-    if (key === 'ArrowUp') sequence = '\x1b[A';
-    if (key === 'ArrowDown') sequence = '\x1b[B';
-    if (key === 'ArrowLeft') sequence = '\x1b[D';
-    if (key === 'ArrowRight') sequence = '\x1b[C';
+    if (!term) return;
 
-    socket.send(JSON.stringify({ type: 'data', data: sequence }));
-    term.focus();
+    switch(key) {
+      case 'tab': term.write('\t'); socket.send(JSON.stringify({type:'input', data:'\t'})); break;
+      case 'esc': term.write('\x1b'); socket.send(JSON.stringify({type:'input', data:'\x1b'})); break;
+      case 'ctrl': 
+        ctrlPressed = !ctrlPressed;
+        btn.style.background = ctrlPressed ? 'var(--accent)' : '';
+        break;
+      case 'up': socket.send(JSON.stringify({type:'input', data:'\x1b[A'})); break;
+      case 'down': socket.send(JSON.stringify({type:'input', data:'\x1b[B'})); break;
+      case 'left': socket.send(JSON.stringify({type:'input', data:'\x1b[D'})); break;
+      case 'right': socket.send(JSON.stringify({type:'input', data:'\x1b[C'})); break;
+      case 'ctrl-c': socket.send(JSON.stringify({type:'input', data:'\x03'})); break;
+    }
   };
 });
-
-document.getElementById('logout-btn').onclick = () => location.reload();
