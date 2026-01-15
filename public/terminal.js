@@ -1,145 +1,43 @@
-let socket;
-let term;
-let fitAddon;
-let sessionToken = null;
-let reconnectAttempts = 0;
-let manuallyLoggedOut = false;
 
-const MAX_RECONNECT_DELAY = 30000;
-const TOKEN_STORAGE_KEY = "pocket_token";
+- Implement or fix `launchCLI(tool, args?)`:
 
-// Optimized Terminal Theme to match UI
-const terminalTheme = {
-  background: "#09090b",
-  foreground: "#fafafa",
-  cursor: "#6366f1",
-  cursorAccent: "#09090b",
-  selection: "rgba(99, 102, 241, 0.3)",
-  black: "#18181b",
-  red: "#ef4444",
-  green: "#10b981",
-  yellow: "#f59e0b",
-  blue: "#3b82f6",
-  magenta: "#8b5cf6",
-  cyan: "#06b6d4",
-  white: "#fafafa",
-  brightBlack: "#71717a",
-  brightRed: "#f87171",
-  brightGreen: "#34d399",
-  brightYellow: "#fbbf24",
-  brightBlue: "#60a5fa",
-  brightMagenta: "#a78bfa",
-  brightCyan: "#22d3ee",
-  brightWhite: "#ffffff",
-};
+  - Set some global `currentTool`.
+  - Open WebSocket with query `?tool=${encodeURIComponent(tool)}`.
+  - Show terminal screen and update header/label to indicate which tool is running.
 
-function showToast(message, type = "info") {
-  const toast = document.getElementById("toast");
-  if (!toast) return;
-  toast.textContent = message;
-  toast.className = `toast ${type}`;
-  toast.classList.remove("hidden");
-  setTimeout(() => toast.classList.add("hidden"), 4000);
-}
+- Improve UX:
 
-function showScreen(id) {
-  document.querySelectorAll(".screen").forEach((s) => s.classList.add("hidden"));
-  const target = document.getElementById(id);
-  if (target) target.classList.remove("hidden");
+  - If WebSocket closes quickly with an error (e.g., unable to spawn tool), show a toast with a clear message.
+  - When connecting to a tool, show a small “Connecting to X…” status in the header.
 
-  if (id === "terminal-screen" && term) {
-    setTimeout(() => {
-      if (fitAddon) fitAddon.fit();
-      term.focus();
-    }, 100);
-  }
-}
+- On page load or login success, optionally call `/tools` to:
+  - Disable cards for tools that are definitely unavailable.
+  - Possibly show a tooltip “Not installed on server”.
 
-function getStoredToken() {
-  try {
-    return localStorage.getItem(TOKEN_STORAGE_KEY);
-  } catch (_) {
-    return null;
-  }
-}
+#### 4) Tests / config
 
-function setStoredToken(token) {
-  try {
-    if (!token) localStorage.removeItem(TOKEN_STORAGE_KEY);
-    else localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  } catch (_) {
-    // ignore
-  }
-}
+- Ensure tests still pass (auth tests already in place).
+- No extra test suite is strictly required for CLI spawning, but we can:
+  - Add a small unit for the tool mapping function if we extract it, or
+  - At least ensure we don’t crash when a tool binary is missing — handled at runtime with try/catch.
 
-function clearAuthState() {
-  sessionToken = null;
-  setStoredToken(null);
-}
+---
 
-async function handleLogin(e) {
-  if (e) e.preventDefault();
-  manuallyLoggedOut = false;
+## Assumptions & questions
 
-  const passwordInput = document.getElementById("password");
-  const password = passwordInput ? passwordInput.value : "";
-  const errorEl = document.getElementById("login-error");
+Before I write concrete changes:
 
-  if (errorEl) errorEl.textContent = "";
+1. Are `kimi` and `opencode` indeed the two scripts you want “brought back” as CLIs?
+2. Are the extra AI CLIs (Claude/Gemini/etc.) actually installed on your Render image, or should we:
+   - Just wire them up and gracefully show “tool not installed” until you install them?
+3. Are you okay with:
+   - A `/tools` endpoint used by the UI to detect availability?
+   - A simple “best effort” check (local scripts: real check; external CLIs: assume missing unless you want me to add `which`-based detection)?
 
-  try {
-    const res = await fetch("/auth", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
+If my assumptions are correct, I’ll:
 
-    const data = await res.json().catch(() => ({}));
+- Update `server.js` with tool spawning and `/tools`.
+- Update `public/index.html` CLI grid to match.
+- Update `public/terminal.js` with a robust `launchCLI` and better error handling.
 
-    if (res.ok && data && data.success && data.token) {
-      sessionToken = data.token;
-      setStoredToken(sessionToken);
-      if (passwordInput) passwordInput.value = "";
-      if (errorEl) errorEl.textContent = "";
-      connect(sessionToken);
-    } else {
-      if (!data || !data.error) {
-        if (errorEl) errorEl.textContent = "Login failed. Please try again.";
-        return;
-      }
-
-      if (data.error === "server_misconfigured") {
-        if (errorEl) {
-          errorEl.textContent =
-            "Server authentication is not configured. Admin must set TERMINAL_PASSWORD in the server environment.";
-        }
-      } else if (data.error === "invalid_password") {
-        if (errorEl) {
-          errorEl.textContent = "Invalid password. Access denied.";
-        }
-      } else if (data.error === "invalid_request") {
-        if (errorEl) {
-          errorEl.textContent = "Password is required.";
-        }
-      } else {
-        if (errorEl) errorEl.textContent = "Login failed. Please try again.";
-      }
-    }
-  } catch (err) {
-    console.error("Login error:", err);
-    if (errorEl) errorEl.textContent = "Server connection failed.";
-  }
-}
-
-function logout() {
-  manuallyLoggedOut = true;
-  clearAuthState();
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.close(1000, "logout");
-  }
-  showScreen("login-screen");
-}
-
-// The rest of the file would contain connect(), launchCLI(), etc.
-// For brevity, we assume existing logic continues unchanged below.
-// Ensure this file in your repo still has all other original functions.
+Reply confirming (and clarifying 1–3 if needed), and I’ll generate the exact FILE CHANGES.
