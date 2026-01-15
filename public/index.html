@@ -74,49 +74,50 @@
             <span class="cli-name">Gemini</span>
           </div>
           <div class="cli-card" onclick="launchCLI('copilot')">
-            <div class="cli-icon icon-copilot">P</div>
+            <div class="cli-icon icon-copilot">C+</div>
             <span class="cli-name">Copilot</span>
           </div>
-          <div class="cli-card" onclick="launchCLI('kilocode')">
-            <div class="cli-icon icon-kilo">K</div>
-            <span class="cli-name">Kilo</span>
+          <div class="cli-card" onclick="launchCLI('grok')">
+            <div class="cli-icon icon-grok">Gk</div>
+            <span class="cli-name">Grok</span>
           </div>
         </div>
       </section>
 
-      <!-- Actions Section -->
+      <!-- Quick Actions -->
       <section class="panel">
-        <h3 class="panel-title">Quick Actions</h3>
-        <div class="actions-stack">
-          <button onclick="launchCLI('bash')" class="card-action">
-            <div class="action-icon">$_</div>
+        <h3 class="panel-title">Project Management</h3>
+        <div class="action-list">
+          <button onclick="launchCLI('bash')" class="action-item">
+            <span class="action-icon">🐚</span>
             <div class="action-info">
-              <span class="action-label">Open Bash Terminal</span>
-              <span class="action-desc">Standard shell access</span>
+              <span class="action-label">Open Shell</span>
+              <span class="action-desc">Standard bash/sh terminal</span>
             </div>
           </button>
-          
-          <div class="card clone-card">
-            <input type="text" id="repo-url" placeholder="https://github.com/user/repo" class="ghost-input">
-            <button onclick="cloneRepo()" class="primary-btn btn-sm">Clone Repo</button>
-          </div>
+          <button onclick="promptClone()" class="action-item">
+            <span class="action-icon">📥</span>
+            <div class="action-info">
+              <span class="action-label">Clone Repository</span>
+              <span class="action-desc">Import from GitHub/GitLab</span>
+            </div>
+          </button>
         </div>
       </section>
     </main>
   </div>
 
   <!-- Terminal Screen (Overlay) -->
-  <div id="terminal-screen" class="screen hidden terminal-overlay">
-    <header class="terminal-header">
-      <div class="terminal-info">
-        <span class="terminal-tag">ACTIVE SESSION</span>
-        <span id="terminal-title" class="terminal-name">bash</span>
+  <div id="terminal-screen" class="screen hidden">
+    <div class="terminal-header">
+      <div class="term-info">
+        <span id="term-title">terminal</span>
       </div>
-      <button onclick="closeTerminal()" class="close-btn">
-        <span>Exit Terminal</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-      </button>
-    </header>
+      <div class="term-controls">
+        <button onclick="clearTerminal()" class="term-btn">Clear</button>
+        <button onclick="closeTerminal()" class="term-btn close">Done</button>
+      </div>
+    </div>
     <div id="terminal-container"></div>
   </div>
 

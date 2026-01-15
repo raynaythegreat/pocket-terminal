@@ -1,7 +1,7 @@
 let socket;
 let term;
 let fitAddon;
-let authToken = null;
+let sessionToken = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_DELAY = 30000;
 
@@ -43,7 +43,6 @@ function showScreen(id) {
   document.getElementById(id).classList.remove('hidden');
   
   if (id === 'terminal-screen' && term) {
-    // Small delay to ensure container is rendered before fit
     setTimeout(() => {
       fitAddon.fit();
       term.focus();
@@ -51,7 +50,32 @@ function showScreen(id) {
   }
 }
 
-function connect(tokenOrPassword) {
+async function handleLogin(e) {
+  e.preventDefault();
+  const password = document.getElementById('password').value;
+  const errorEl = document.getElementById('login-error');
+  
+  try {
+    const res = await fetch('/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    
+    const data = await res.json();
+    if (data.success) {
+      sessionToken = data.token;
+      sessionStorage.setItem("pocket_token", sessionToken);
+      connect(sessionToken);
+    } else {
+      errorEl.textContent = "Invalid password. Access denied.";
+    }
+  } catch (err) {
+    errorEl.textContent = "Server connection failed.";
+  }
+}
+
+function connect(token) {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const wsUrl = `${protocol}//${window.location.host}`;
   
@@ -59,7 +83,7 @@ function connect(tokenOrPassword) {
 
   socket.onopen = () => {
     reconnectAttempts = 0;
-    socket.send(JSON.stringify({ type: "auth", password: tokenOrPassword }));
+    socket.send(JSON.stringify({ type: "auth", token: token }));
     document.getElementById('status-dot').className = 'dot online';
     document.getElementById('status-text').textContent = 'CONNECTED';
   };
@@ -67,7 +91,7 @@ function connect(tokenOrPassword) {
   socket.onclose = () => {
     document.getElementById('status-dot').className = 'dot offline';
     document.getElementById('status-text').textContent = 'DISCONNECTED';
-    scheduleReconnect();
+    if (sessionToken) scheduleReconnect();
   };
 
   socket.onerror = (err) => {
@@ -80,16 +104,13 @@ function connect(tokenOrPassword) {
       const data = JSON.parse(event.data);
       switch (data.type) {
         case "authenticated":
-          authToken = tokenOrPassword;
-          sessionStorage.setItem("pocket_token", authToken);
           showScreen("launcher-screen");
           loadProjects();
           break;
         case "error":
           showToast(data.message, "error");
-          if (data.message.toLowerCase().includes("auth")) {
-            sessionStorage.removeItem("pocket_token");
-            showScreen("login-screen");
+          if (data.message.toLowerCase().includes("auth") || data.message.toLowerCase().includes("session")) {
+            logout();
           }
           break;
         case "data":
@@ -106,8 +127,7 @@ function scheduleReconnect() {
   reconnectAttempts++;
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), MAX_RECONNECT_DELAY);
   setTimeout(() => {
-    const savedToken = sessionStorage.getItem("pocket_token");
-    if (savedToken) connect(savedToken);
+    if (sessionToken) connect(sessionToken);
   }, delay);
 }
 
@@ -115,128 +135,119 @@ function initTerminal() {
   if (term) return;
   
   term = new Terminal({
-    cursorBlink: true,
-    fontSize: 14,
-    fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
     theme: terminalTheme,
-    allowProposedApi: true,
-    rows: 40,
-    cols: 80
+    fontFamily: 'JetBrains Mono, Menlo, Monaco, monospace',
+    fontSize: 14,
+    cursorBlink: true,
+    allowProposedApi: true
   });
-
+  
   fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal-container'));
   
   term.onData(data => {
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ type: "data", data }));
+      socket.send(JSON.stringify({ type: "input", data }));
     }
   });
 
-  window.addEventListener('resize', () => {
-    if (term) fitAddon.fit();
-  });
+  window.addEventListener('resize', () => fitAddon.fit());
 }
 
-function launchCLI(cmd, args = []) {
+function launchCLI(tool, args = []) {
   const project = document.getElementById('project-select').value;
-  document.getElementById('terminal-title').textContent = cmd;
+  document.getElementById('term-title').textContent = `${tool}${project ? ' @ ' + project : ''}`;
   
-  showScreen('terminal-screen');
   initTerminal();
-  term.clear();
-
+  showScreen("terminal-screen");
+  
+  const command = args.length > 0 ? `${tool} ${args.join(' ')}` : tool;
+  
   if (socket && socket.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ 
-      type: "spawn", 
-      command: cmd, 
-      args: args,
-      cwd: project 
+    term.reset();
+    socket.send(JSON.stringify({
+      type: "spawn",
+      command: command,
+      project: project,
+      cols: term.cols,
+      rows: term.rows
     }));
   } else {
-    showToast("Not connected to server", "error");
+    showToast("Socket not connected", "error");
   }
-}
-
-function closeTerminal() {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    // Send Ctrl+C or kill signal if needed, but for now we just switch screen
-    // The server handles PTY cleanup when a new spawn happens or socket closes
-  }
-  showScreen('launcher-screen');
 }
 
 async function loadProjects() {
   try {
-    const res = await fetch("/api/projects", {
-      headers: { "Authorization": authToken }
+    const res = await fetch('/api/projects', {
+      headers: { 'Authorization': sessionToken }
     });
-    if (!res.ok) throw new Error("Failed to load environments");
-    
+    if (!res.ok) throw new Error();
     const projects = await res.json();
-    const select = document.getElementById("project-select");
+    const select = document.getElementById('project-select');
     
-    // Keep root option
+    // Preserve "Root" option
     select.innerHTML = '<option value="">Root Environment</option>';
-    
     projects.forEach(p => {
-      const opt = document.createElement("option");
+      const opt = document.createElement('option');
       opt.value = p;
       opt.textContent = p;
       select.appendChild(opt);
     });
   } catch (err) {
-    showToast(err.message, "error");
+    console.error("Failed to load projects");
   }
 }
 
-async function cloneRepo() {
-  const url = document.getElementById("repo-url").value.trim();
-  if (!url) return showToast("Enter a repository URL", "warning");
-
-  showToast("Cloning repository...", "info");
+function promptClone() {
+  const url = prompt("Enter Git Repository URL:");
+  if (!url) return;
   
-  try {
-    const res = await fetch("/api/projects", {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "Authorization": authToken
-      },
-      body: JSON.stringify({ url })
-    });
-    
-    const data = await res.json();
-    if (res.ok) {
-      showToast("Cloned successfully!", "success");
-      document.getElementById("repo-url").value = "";
+  showToast("Cloning repository...");
+  fetch('/api/clone', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': sessionToken
+    },
+    body: JSON.stringify({ repoUrl: url })
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.success) {
+      showToast("Clone successful!", "success");
       loadProjects();
     } else {
       showToast(data.error || "Clone failed", "error");
     }
-  } catch (err) {
-    showToast("Network error during clone", "error");
-  }
+  });
+}
+
+function clearTerminal() {
+  if (term) term.reset();
+}
+
+function closeTerminal() {
+  showScreen("launcher-screen");
 }
 
 function logout() {
+  sessionToken = null;
   sessionStorage.removeItem("pocket_token");
   if (socket) socket.close();
-  location.reload();
+  showScreen("login-screen");
 }
 
-// Initialization
-document.getElementById('login-form').onsubmit = (e) => {
-  e.preventDefault();
-  const pass = document.getElementById('password').value;
-  connect(pass);
-};
-
-// Auto-login if token exists
-window.addEventListener('load', () => {
+// Auto-login on load
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  
   const savedToken = sessionStorage.getItem("pocket_token");
   if (savedToken) {
+    sessionToken = savedToken;
     connect(savedToken);
+  } else {
+    showScreen("login-screen");
   }
 });
