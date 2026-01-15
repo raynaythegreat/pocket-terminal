@@ -13,7 +13,7 @@ const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 3000;
 // Ensure password is trimmed and defaults to 'pocket' if not set
-const PASSWORD = (process.env.PASSWORD || "changeme123").trim();
+const PASSWORD = (process.env.TERMINAL_PASSWORD || "Superprimitive69!").trim();
 const PROJECTS_DIR = path.join(__dirname, "projects");
 
 // Global store for terminal sessions: sessionId -> { term, lastActive }
