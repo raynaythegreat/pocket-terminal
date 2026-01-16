@@ -7,7 +7,6 @@ let connectionStatus = "disconnected";
 window.addEventListener("DOMContentLoaded", () => {
   const backButton = document.getElementById("back-to-launcher");
   const clearButton = document.getElementById("clear-terminal");
-  const bypassButton = document.getElementById("bypass-login");
 
   if (backButton) {
     backButton.addEventListener("click", switchToLauncher);
@@ -15,10 +14,6 @@ window.addEventListener("DOMContentLoaded", () => {
 
   if (clearButton) {
     clearButton.addEventListener("click", () => term && term.clear());
-  }
-
-  if (bypassButton) {
-    bypassButton.addEventListener("click", switchToLauncher);
   }
 
   initTerminal();
@@ -90,7 +85,10 @@ function startSession(toolId) {
 
   ws.onclose = () => {
     connectionStatus = "disconnected";
-    updateConnectionBanner(true, "Disconnected. Tap to reconnect.");
+    // If we intentionally closed it to switch screens, don't show error
+    if (document.getElementById("launcher-screen").classList.contains("hidden")) {
+      updateConnectionBanner(true, "Disconnected. Tap to reconnect.");
+    }
   };
 
   ws.onerror = () => {
@@ -117,12 +115,12 @@ function switchToScreen(screenId) {
 
 function updateConnectionBanner(show, text = "") {
   const banner = document.getElementById("connection-status");
-  const statusText = document.getElementById("connection-text");
+  const bannerText = document.getElementById("connection-text");
   if (!banner) return;
 
   if (show) {
     banner.classList.remove("hidden");
-    statusText.textContent = text;
+    bannerText.textContent = text;
   } else {
     banner.classList.add("hidden");
   }

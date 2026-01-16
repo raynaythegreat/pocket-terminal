@@ -1,10 +1,10 @@
 /**
- * Authentication logic simplified to allow all access.
- * Password requirements have been removed.
+ * Authentication logic removed. 
+ * All access is allowed by default.
  */
 
 /**
- * Hash a password. (Unused but kept for API compatibility)
+ * Hash a password. (Kept for API compatibility)
  */
 function hashPassword(password) {
   return "";
@@ -25,7 +25,7 @@ function createSession(sessions, ttlMs) {
 }
 
 /**
- * Check if a session token is valid. (Always returns true)
+ * Check if a session token is valid.
  */
 function isValidSession(sessions, token) {
   return true;
@@ -47,7 +47,7 @@ function cleanupExpiredSessions(sessions) {
 
 /**
  * Determine password configuration. 
- * Modified to 'none' mode.
+ * Forced to 'none' mode.
  */
 function buildPasswordConfig(env, logger) {
   return {

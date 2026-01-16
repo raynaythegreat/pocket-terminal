@@ -21,6 +21,7 @@ const CLI_HOME_DIR = path.resolve(__dirname, process.env.CLI_HOME_DIR || path.jo
 const WORKSPACE_DIR = path.resolve(__dirname, process.env.WORKSPACE_DIR || path.join("workspace", "projects"));
 const LOCAL_BIN_DIR = path.join(__dirname, "bin");
 
+// Ensure directories exist
 for (const d of [CLI_HOME_DIR, WORKSPACE_DIR, LOCAL_BIN_DIR]) {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 }
@@ -93,11 +94,9 @@ wss.on("connection", (ws, req) => {
 
   ws.on("close", cleanup);
   ws.on("error", cleanup);
-  ptyProcess.onExit(cleanup);
 });
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Pocket Terminal running at http://0.0.0.0:${PORT}`);
-  console.log(`Workspace: ${WORKSPACE_DIR}`);
-  console.log(`Auth: Disabled (Public Access)`);
+  console.log(`Authentication is DISABLED.`);
 });
