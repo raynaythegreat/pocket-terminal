@@ -63,6 +63,24 @@ h4 {
 .text-muted {
   color: var(--text-muted);
 }
+
+/* Allow selection globally; we selectively disable it on buttons/controls */
+body {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+code,
+pre,
+.terminal-selectable,
+#auth-panel,
+#auth-panel code,
+#auth-panel pre {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
 code {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -73,6 +91,15 @@ code {
 }
 
 /* Buttons */
+.primary-btn,
+.secondary-btn,
+.icon-btn,
+.reconnect-btn,
+button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .primary-btn,
 .secondary-btn {
   border-radius: 999px;
@@ -150,16 +177,16 @@ code {
 /* Connection banner */
 .connection-banner {
   position: fixed;
-  top: calc(var(--safe-top) + 10px);
-  left: 50%;
-  transform: translateX(-50%);
+  top: calc(var(--safe-top) + 8px);
+  left: 12px;
+  right: 12px;
   z-index: 50;
   background: rgba(17, 17, 19, 0.92);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: var(--shadow);
+  border-radius: 999px;
+  padding: 10px 12px;
+  backdrop-filter: blur(10px);
 }
 .connection-banner.hidden {
   display: none;
@@ -167,103 +194,94 @@ code {
 .connection-content {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
 }
 .reconnect-btn {
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
   border-radius: 999px;
-  padding: 6px 10px;
-  font-weight: 650;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
   cursor: pointer;
+  font-weight: 650;
+  min-height: 36px;
 }
 .reconnect-btn.hidden {
   display: none;
 }
 
-/* Top bars */
+/* Layout + panels (rest of file unchanged in prior repo; keep compatible defaults) */
 .top-bar {
-  padding: calc(var(--safe-top) + 16px) 16px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  padding: calc(var(--safe-top) + 12px) 14px 12px 14px;
+  gap: 10px;
 }
 .top-bar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 .top-bar-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
-
 .app-mark {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  min-width: 0;
 }
 .app-dot {
-  width: 42px;
-  height: 42px;
-  border-radius: 14px;
-  background: radial-gradient(circle at 30% 30%, rgba(129, 140, 248, 0.95), rgba(99, 102, 241, 0.2));
-  border: 1px solid rgba(99, 102, 241, 0.4);
-  box-shadow: 0 14px 30px rgba(99, 102, 241, 0.15);
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 1), rgba(16, 185, 129, 1));
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+  flex: 0 0 auto;
 }
 .app-title {
-  font-size: 18px;
+  font-size: 16px;
+  line-height: 1.1;
 }
-
-/* Launcher */
 .launcher-main {
-  flex: 1;
+  padding: 0 14px 16px 14px;
   overflow: auto;
-  padding: 0 16px calc(var(--safe-bottom) + 18px);
-  display: grid;
-  gap: 14px;
-  grid-template-columns: 1fr;
+  -webkit-overflow-scrolling: touch;
 }
-
 .panel {
-  background: rgba(17, 17, 19, 0.86);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(17, 17, 19, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius);
-  padding: 14px;
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
-.panel-muted {
-  background: rgba(17, 17, 19, 0.6);
-}
-
 .panel-head {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
+  padding: 14px 14px 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .panel-title {
-  font-size: 16px;
+  font-size: 15px;
 }
 .panel-sub {
-  line-height: 1.35;
+  margin-top: 6px;
 }
-
 .loading-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 0 4px;
+  padding: 14px;
 }
 .spinner {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
-  border: 2px solid rgba(255, 255, 255, 0.14);
-  border-top-color: rgba(129, 140, 248, 0.9);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.7);
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin {
@@ -271,23 +289,24 @@ code {
     transform: rotate(360deg);
   }
 }
-
 .alert {
+  margin: 0 14px 14px 14px;
   border-radius: 12px;
-  padding: 12px;
-  margin: 10px 0;
+  padding: 12px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 .alert.hidden {
   display: none;
 }
 .alert-error {
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  background: rgba(239, 68, 68, 0.08);
-  color: #fecaca;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: rgba(255, 255, 255, 0.95);
 }
-
 .tool-groups {
-  display: grid;
+  padding: 0 14px 14px 14px;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
 }
 .tool-group-head {
@@ -295,206 +314,84 @@ code {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
+  padding: 12px 2px 10px 2px;
 }
 .tools-grid {
   display: grid;
-  gap: 10px;
   grid-template-columns: 1fr;
+  gap: 10px;
 }
-@media (min-width: 560px) {
-  .launcher-main {
-    grid-template-columns: 1.2fr 0.8fr;
-    align-items: start;
-  }
+@media (min-width: 520px) {
   .tools-grid {
     grid-template-columns: 1fr 1fr;
   }
 }
-
-.tool-card {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(24, 24, 27, 0.55);
-  cursor: pointer;
-  transition: transform 0.06s ease, border-color 0.15s ease, background 0.15s ease;
-}
-.tool-card:hover {
-  background: rgba(24, 24, 27, 0.7);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-.tool-card:active {
-  transform: scale(0.99);
-}
-.tool-card.disabled {
-  cursor: default;
-  opacity: 0.75;
-}
-.tool-card-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-.tool-title {
-  font-weight: 750;
-}
-.tool-desc {
-  margin-top: 2px;
-  line-height: 1.35;
-}
-.tool-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
 .badge {
-  font-size: 12px;
-  padding: 4px 9px;
+  display: inline-flex;
+  align-items: center;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
 }
 .badge-ok {
-  border-color: rgba(16, 185, 129, 0.35);
-  background: rgba(16, 185, 129, 0.12);
-  color: #a7f3d0;
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.25);
 }
 .badge-warn {
-  border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.12);
-  color: #fde68a;
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.25);
 }
 .badge-muted {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.75);
+  opacity: 0.85;
 }
 
-.tips {
-  display: grid;
-  gap: 10px;
-}
-.tip {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(24, 24, 27, 0.35);
+.tool-card {
+  padding: 12px 12px;
   border-radius: 14px;
-  padding: 12px;
-}
-.tip-title {
-  font-weight: 750;
-  margin-bottom: 6px;
-}
-
-/* Terminal */
-.terminal-top {
-  padding: calc(var(--safe-top) + 12px) 12px 10px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 10px;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(9, 9, 11, 0.65);
-  backdrop-filter: blur(12px);
-}
-.terminal-meta-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.terminal-title {
-  font-weight: 800;
-}
-.terminal-sub {
-  margin-top: 2px;
-}
-.terminal-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.terminal-main {
-  flex: 1;
-  min-height: 0;
-  padding: 10px 10px calc(var(--safe-bottom) + 12px);
-}
-.terminal-container {
-  width: 100%;
-  height: 100%;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-}
-
-/* Auth overlay */
-.auth-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 80;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(6px);
-  display: grid;
-  place-items: center;
-  padding: 16px;
-}
-.auth-overlay.hidden {
-  display: none;
-}
-.auth-card {
-  width: min(560px, 100%);
-  border-radius: 16px;
-  background: rgba(17, 17, 19, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: var(--shadow);
-  padding: 14px;
-}
-.auth-head {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.18);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
+  gap: 12px;
 }
-.auth-title {
-  font-weight: 850;
-  font-size: 16px;
+.tool-meta {
+  min-width: 0;
 }
-.auth-row {
-  display: grid;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(24, 24, 27, 0.4);
-  margin-bottom: 10px;
-}
-.auth-row.hidden {
-  display: none;
-}
-.auth-label {
-  font-weight: 750;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.9);
-}
-.auth-code {
-  display: inline-block;
-  max-width: 100%;
-  overflow-x: auto;
-  white-space: nowrap;
-}
-.auth-row-actions {
+.tool-name-row {
   display: flex;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
-.auth-help {
-  margin-top: 4px;
-  line-height: 1.4;
+.tool-name {
+  font-weight: 780;
+}
+.tool-desc {
+  margin-top: 6px;
+}
+.tool-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Terminal screen helpers */
+#terminal-container,
+.xterm {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.xterm .xterm-screen {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Make selection visible on dark bg */
+::selection {
+  background: rgba(99, 102, 241, 0.35);
 }
