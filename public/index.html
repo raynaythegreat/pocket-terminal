@@ -65,34 +65,41 @@
 
             <div class="tool-group">
               <div class="tool-group-head">
+                <h3>AI</h3>
+                <p class="text-xs text-muted">Assistants + copilots</p>
+              </div>
+              <div id="tools-ai" class="tools-grid" aria-label="AI tools"></div>
+            </div>
+
+            <div class="tool-group">
+              <div class="tool-group-head">
                 <h3>Dev</h3>
                 <p class="text-xs text-muted">Project tooling</p>
               </div>
               <div id="tools-dev" class="tools-grid" aria-label="Developer tools"></div>
             </div>
-
-            <div class="tool-group">
-              <div class="tool-group-head">
-                <h3>AI</h3>
-                <p class="text-xs text-muted">AI CLIs (may require tokens)</p>
-              </div>
-              <div id="tools-ai" class="tools-grid" aria-label="AI tools"></div>
-            </div>
           </div>
         </section>
 
-        <section class="panel panel-footnote">
-          <div class="footnote">
-            <div class="footnote-row">
-              <div class="text-sm">
-                Workspace: <code id="workspace-dir">…</code>
-              </div>
-              <div class="text-sm">
-                CLI Home: <code id="cli-home-dir">…</code>
+        <section class="panel panel-muted">
+          <div class="panel-head">
+            <h2 class="panel-title">Tips</h2>
+            <div class="panel-sub text-sm text-muted">
+              For headless deployments, authentication uses device codes (you’ll open links on your phone).
+            </div>
+          </div>
+          <div class="tips">
+            <div class="tip">
+              <div class="tip-title">Persistence</div>
+              <div class="tip-body text-sm text-muted">
+                Logins and tool config are stored in <code>CLI_HOME_DIR</code> so you don’t re-auth every time.
               </div>
             </div>
-            <div class="text-xs text-muted">
-              Set secrets in your hosting environment variables (Vercel or Render) or <code>.env.local</code>.
+            <div class="tip">
+              <div class="tip-title">Optional tools</div>
+              <div class="tip-body text-sm text-muted">
+                Run <code>./build.sh</code> during build to bundle extra CLIs into <code>./bin</code>.
+              </div>
             </div>
           </div>
         </section>
@@ -100,71 +107,70 @@
     </div>
 
     <div id="terminal-screen" class="screen hidden">
-      <header class="terminal-bar">
-        <button id="back-btn" class="icon-btn" type="button" aria-label="Back to launcher">
-          <span aria-hidden="true">←</span>
+      <header class="terminal-top">
+        <button id="back-to-launcher" class="icon-btn" type="button" aria-label="Back">
+          ←
         </button>
-
         <div class="terminal-meta">
-          <div class="terminal-title-row">
-            <span id="terminal-tool-name" class="terminal-title">Session</span>
-            <span id="terminal-tool-badge" class="badge badge-muted">…</span>
+          <div class="terminal-meta-top">
+            <div id="terminal-tool-name" class="terminal-title">Session</div>
+            <div id="terminal-tool-badge" class="badge badge-muted">…</div>
           </div>
-          <div id="terminal-tool-sub" class="terminal-sub text-xs text-muted">Connecting…</div>
+          <div id="terminal-tool-sub" class="terminal-sub text-xs text-muted"></div>
         </div>
-
         <div class="terminal-actions">
-          <button id="copy-btn" class="secondary-btn btn-sm" type="button">Copy</button>
-          <button id="paste-btn" class="secondary-btn btn-sm" type="button">Paste</button>
-          <button id="ctrlc-btn" class="secondary-btn btn-sm" type="button">Ctrl+C</button>
+          <button id="terminal-copy" class="secondary-btn btn-sm" type="button">Copy</button>
+          <button id="terminal-clear" class="secondary-btn btn-sm" type="button">Clear</button>
         </div>
       </header>
 
       <main class="terminal-main">
         <div id="terminal-container" class="terminal-container" aria-label="Terminal"></div>
       </main>
+
+      <div id="auth-overlay" class="auth-overlay hidden" role="dialog" aria-modal="true">
+        <div class="auth-card">
+          <div class="auth-head">
+            <div>
+              <div class="auth-title">Authentication required</div>
+              <div id="auth-tool" class="auth-sub text-sm text-muted"></div>
+            </div>
+            <button id="auth-close" class="icon-btn" type="button" aria-label="Close auth panel">✕</button>
+          </div>
+
+          <div class="auth-body">
+            <div id="auth-url-row" class="auth-row hidden">
+              <div class="auth-label">Open URL</div>
+              <div class="auth-value">
+                <code id="auth-url" class="auth-code"></code>
+              </div>
+              <div class="auth-row-actions">
+                <button id="auth-open-url" class="primary-btn btn-sm" type="button">Open</button>
+                <button id="auth-copy-url" class="secondary-btn btn-sm" type="button">Copy</button>
+              </div>
+            </div>
+
+            <div id="auth-code-row" class="auth-row hidden">
+              <div class="auth-label">Code</div>
+              <div class="auth-value">
+                <code id="auth-code" class="auth-code"></code>
+              </div>
+              <div class="auth-row-actions">
+                <button id="auth-copy-code" class="secondary-btn btn-sm" type="button">Copy</button>
+              </div>
+            </div>
+
+            <div class="auth-help text-sm text-muted">
+              This server can’t open a browser. Use the link/code above on your device to complete login, then return
+              here.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <dialog id="hint-dialog" class="dialog">
-      <form method="dialog" class="dialog-inner">
-        <div class="dialog-head">
-          <h3 id="hint-title">Tool not available</h3>
-          <button class="icon-btn" type="submit" aria-label="Close">✕</button>
-        </div>
-        <div id="hint-body" class="dialog-body text-sm"></div>
-        <div class="dialog-actions">
-          <button class="secondary-btn" type="submit">Close</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog id="help-dialog" class="dialog">
-      <form method="dialog" class="dialog-inner">
-        <div class="dialog-head">
-          <h3>Help</h3>
-          <button class="icon-btn" type="submit" aria-label="Close">✕</button>
-        </div>
-        <div class="dialog-body text-sm">
-          <p>
-            Pocket Terminal runs each tool in a pseudo-terminal on the server. Some CLIs require API keys.
-          </p>
-          <ul>
-            <li>Claude Code: set <code>ANTHROPIC_API_KEY</code></li>
-            <li>Gemini: set <code>GEMINI_API_KEY</code></li>
-            <li>Codex/OpenAI: set <code>OPENAI_API_KEY</code></li>
-          </ul>
-          <p class="text-xs text-muted">
-            Configure in your hosting environment variables (Vercel or Render) or <code>.env.local</code>.
-          </p>
-        </div>
-        <div class="dialog-actions">
-          <button class="secondary-btn" type="submit">Close</button>
-        </div>
-      </form>
-    </dialog>
-
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
     <script src="/terminal.js"></script>
   </body>
 </html>

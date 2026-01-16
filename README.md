@@ -14,20 +14,33 @@ Open `http://localhost:3000`, then use **Quick Launch**.
 
 - Projects are stored in `WORKSPACE_DIR` (default: `./workspace/projects`)
 - CLI config/history uses `CLI_HOME_DIR` (default: `./workspace/cli-home`)
+  - This app stores per-tool HOME directories under `CLI_HOME_DIR/tools/<toolId>`
+  - This prevents auth/config collisions and keeps logins persistent across sessions
 
 ## Tool availability
 
-The launcher now shows which tools are **Ready** (installed and detected) vs **Install** (not detected on the server).
+The launcher shows which tools are **Ready** (installed and detected) vs install hints.
 
-- Some tools are detected from:
+- Tools are resolved from:
+  - repo scripts (e.g. `./opencode` if present and executable)
   - `./bin` (created by `./build.sh`)
   - `./node_modules/.bin`
   - System PATH (if installed in your OS image)
-- Some tools can run via `npx` when configured.
+  - `npx -y <pkg>` fallback for some tools
 
-## Optional CLIs (openCode, Kimi)
+## Optional CLIs (openCode, Kimi, etc.)
 
 Run `./build.sh` to install optional tools into `./bin` (and Kimi into `./kimi-cli-deps` when Python is available).
+
+## Headless authentication (Copilot + others)
+
+On Render/headless servers, CLIs cannot open a browser for OAuth automatically.
+
+Pocket Terminal detects common auth URLs/device codes printed by CLIs and shows an **Authentication panel** with:
+- URL (open/copy)
+- code (copy)
+
+Complete login on your phone/device, then return to the terminal session.
 
 ## Secrets / API keys
 

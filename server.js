@@ -45,15 +45,6 @@ function isExecutableFile(p) {
   }
 }
 
-function fileExistsAndIsFile(p) {
-  try {
-    const st = fs.statSync(p);
-    return st.isFile();
-  } catch {
-    return false;
-  }
-}
-
 function firstExistingExecutable(candidates) {
   for (const candidate of candidates) {
     if (isExecutableFile(candidate)) return candidate;
@@ -62,10 +53,7 @@ function firstExistingExecutable(candidates) {
 }
 
 function resolveLocalBin(bin) {
-  const candidates = [
-    path.join(LOCAL_BIN_DIR, bin),
-    path.join(NODE_MODULES_BIN_DIR, bin),
-  ];
+  const candidates = [path.join(LOCAL_BIN_DIR, bin), path.join(NODE_MODULES_BIN_DIR, bin)];
 
   if (process.platform === "win32") {
     const exts = [".cmd", ".exe", ".bat"];
@@ -91,7 +79,7 @@ function buildPathEnv() {
  * - Else use a plain command name (may exist in PATH)
  * - Else fallback to: npx -y <packageName>
  *
- * @param {{bin?: string, packageName?: string, preferRepoScript?: string}} spec
+ * @param {{bin?: string, packageName?: string, preferRepoScript?: string, args?: string[]}} spec
  * @returns {{command: string, args: string[], resolution: string, available: boolean, hint?: string}}
  */
 function resolveCommand(spec) {
@@ -102,407 +90,359 @@ function resolveCommand(spec) {
   if (preferRepoScript) {
     const p = path.resolve(__dirname, preferRepoScript);
     if (isExecutableFile(p)) {
-      return { command: p, args: [], resolution: `script:${preferRepoScript}`, available: true };
-    }
-    if (fileExistsAndIsFile(p)) {
-      // Try via node for non-executable JS scripts
-      return {
-        command: process.execPath,
-        args: [p],
-        resolution: `node-script:${preferRepoScript}`,
-        available: true,
-      };
+      return { command: p, args: spec.args || [], resolution: "repo-script", available: true };
     }
   }
 
   if (bin) {
     const local = resolveLocalBin(bin);
-    if (local) return { command: local, args: [], resolution: `localbin:${bin}`, available: true };
+    if (local) {
+      return { command: local, args: spec.args || [], resolution: "local-bin", available: true };
+    }
 
-    // Use plain command name; it might exist in PATH (system install)
+    // Try as PATH command (may exist in container)
     return {
       command: bin,
-      args: [],
-      resolution: `path:${bin}`,
-      available: false, // unknown; updated by availability check
+      args: spec.args || [],
+      resolution: "path",
+      available: true,
+      hint: packageName
+        ? `If "${bin}" is not found, install "${packageName}" or run via npx.`
+        : `If "${bin}" is not found, install it on the server.`,
     };
   }
 
   if (packageName) {
-    // npx fallback; always "available" in the sense it will attempt to run (may download)
     return {
       command: "npx",
-      args: ["-y", packageName],
-      resolution: `npx:${packageName}`,
+      args: ["-y", packageName, ...(spec.args || [])],
+      resolution: "npx",
       available: true,
-      hint: `Will run via npx: npx -y ${packageName}`,
+      hint: `Running via npx. For faster startup, install "${packageName}" during build.`,
     };
   }
 
-  return { command: "bash", args: [], resolution: "fallback:bash", available: true };
+  return {
+    command: "bash",
+    args: ["-lc", "echo 'No command spec provided'"],
+    resolution: "invalid",
+    available: false,
+    hint: "Tool is misconfigured on the server.",
+  };
 }
 
-function whichLikeSync(cmd, envPath) {
-  // Basic PATH scan; avoids adding deps
-  const p = envPath || process.env.PATH || "";
-  const dirs = p.split(path.delimiter).filter(Boolean);
-
-  const exts =
-    process.platform === "win32"
-      ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM")
-          .split(";")
-          .filter(Boolean)
-          .map((e) => e.toLowerCase())
-      : [""];
-
-  for (const dir of dirs) {
-    for (const ext of exts) {
-      const candidate = process.platform === "win32" ? path.join(dir, cmd + ext) : path.join(dir, cmd);
-      if (isExecutableFile(candidate)) return candidate;
-    }
-  }
-  return null;
+function getToolRegistry() {
+  // Keep this list in sync with the optional deps / build.sh scripts
+  return [
+    {
+      id: "shell",
+      name: "Shell",
+      group: "core",
+      description: "Interactive bash shell in the workspace",
+      spec: { bin: process.platform === "win32" ? "cmd.exe" : "bash", args: [] },
+      badge: "Ready",
+      badgeClass: "badge-ok",
+      installHint: null,
+      spawn: { cwd: WORKSPACE_DIR },
+    },
+    {
+      id: "opencode",
+      name: "OpenCode",
+      group: "ai",
+      description: "Code assistant TUI (repo wrapper or local install)",
+      spec: { preferRepoScript: "./opencode", bin: "opencode", packageName: "@openai/codex" },
+      installHint: `Run ./build.sh (installs optional tools into ./bin) or install the tool in your image.`,
+      // TUI rendering tends to look wrong unless we set a strong TERM and colors.
+      spawn: {
+        cwd: WORKSPACE_DIR,
+        env: {
+          TERM: "xterm-256color",
+          COLORTERM: "truecolor",
+          FORCE_COLOR: "1",
+        },
+      },
+    },
+    {
+      id: "copilot",
+      name: "Copilot CLI",
+      group: "ai",
+      description: "GitHub Copilot CLI",
+      spec: { bin: "copilot", packageName: "@github/copilot" },
+      installHint: `Install @github/copilot (optionalDependency) or run ./build.sh if you bundle it into ./bin.`,
+      spawn: {
+        cwd: WORKSPACE_DIR,
+        // Prevent server trying to launch a browser; client will open auth URL.
+        env: {
+          BROWSER: "false",
+          NO_BROWSER: "1",
+        },
+      },
+    },
+    {
+      id: "claude",
+      name: "Claude Code",
+      group: "ai",
+      description: "Anthropic Claude Code CLI",
+      spec: { bin: "claude", packageName: "@anthropic-ai/claude-code" },
+      installHint: `Set ANTHROPIC_API_KEY in your hosting environment variables (Vercel or Render) or .env.local.`,
+      spawn: { cwd: WORKSPACE_DIR },
+    },
+    {
+      id: "gemini",
+      name: "Gemini CLI",
+      group: "ai",
+      description: "Google Gemini CLI",
+      spec: { bin: "gemini", packageName: "@google/gemini-cli" },
+      installHint: `Set GEMINI_API_KEY in your hosting environment variables (Vercel or Render) or .env.local.`,
+      spawn: { cwd: WORKSPACE_DIR },
+    },
+    {
+      id: "codex",
+      name: "OpenAI Codex",
+      group: "ai",
+      description: "OpenAI Codex CLI",
+      spec: { bin: "codex", packageName: "@openai/codex" },
+      installHint: `Set OPENAI_API_KEY in your hosting environment variables (Vercel or Render) or .env.local.`,
+      spawn: { cwd: WORKSPACE_DIR },
+    },
+    {
+      id: "grok",
+      name: "Grok CLI",
+      group: "ai",
+      description: "Grok CLI (if installed)",
+      spec: { bin: "grok", packageName: "@vibe-kit/grok-cli" },
+      installHint: `Install @vibe-kit/grok-cli (optionalDependency) or bundle into ./bin.`,
+      spawn: { cwd: WORKSPACE_DIR },
+    },
+    {
+      id: "kilocode",
+      name: "KiloCode",
+      group: "ai",
+      description: "KiloCode CLI",
+      spec: { bin: "kilocode", packageName: "@kilocode/cli" },
+      installHint: `Install @kilocode/cli (optionalDependency) or bundle into ./bin.`,
+      spawn: { cwd: WORKSPACE_DIR },
+    },
+  ];
 }
 
-function shellDefault() {
-  if (process.platform === "win32") return { command: "powershell.exe", args: [] };
-  return { command: "bash", args: ["-l"] };
+function getToolById(id) {
+  return getToolRegistry().find((t) => t.id === id) || null;
 }
 
-/**
- * Tool registry: single source of truth
- * - commandSpec is resolved on demand using resolveCommand
- * - installHint is shown in UI when not available
- */
-const TOOL_DEFS = [
-  {
-    id: "shell",
-    name: "Shell",
-    desc: "Standard interactive shell",
-    category: "Core",
-    icon: "🐚",
-    commandSpec: { bin: process.platform === "win32" ? "powershell.exe" : "bash" },
-    installHint: process.platform === "win32" ? "PowerShell should be available by default." : "bash should be available by default.",
-  },
-  {
-    id: "gh",
-    name: "GitHub CLI",
-    desc: "Manage repos & PRs",
-    category: "Dev",
-    icon: "🐙",
-    commandSpec: { bin: "gh" },
-    installHint:
-      "Install gh: https://cli.github.com/ (or apt-get install gh). On Render, use a custom build command or Docker image that includes gh.",
-  },
-  {
-    id: "opencode",
-    name: "openCode",
-    desc: "AI coding CLI launcher",
-    category: "AI",
-    icon: "🧠",
-    commandSpec: { preferRepoScript: "./opencode", bin: "opencode", packageName: "@openai/codex" },
-    installHint:
-      "Run ./build.sh to install optional tools into ./bin, or install globally. You can also rely on npx for supported packages.",
-  },
-  {
-    id: "copilot",
-    name: "Copilot",
-    desc: "GitHub Copilot CLI",
-    category: "AI",
-    icon: "🤖",
-    commandSpec: { bin: "copilot", packageName: "@github/copilot" },
-    installHint:
-      "Install Copilot CLI (optionalDependency) and ensure node_modules are installed. If not available, run: npm i @github/copilot",
-  },
-  {
-    id: "gemini",
-    name: "Gemini",
-    desc: "Google Gemini CLI",
-    category: "AI",
-    icon: "✨",
-    commandSpec: { bin: "gemini", packageName: "@google/gemini-cli" },
-    installHint:
-      "Install Gemini CLI (optionalDependency). If not available, run: npm i @google/gemini-cli",
-  },
-  {
-    id: "claude",
-    name: "Claude Code",
-    desc: "Anthropic Claude Code CLI",
-    category: "AI",
-    icon: "🧵",
-    commandSpec: { bin: "claude", packageName: "@anthropic-ai/claude-code" },
-    installHint:
-      "Install Claude Code CLI (optionalDependency). If not available, run: npm i @anthropic-ai/claude-code",
-  },
-  {
-    id: "codex",
-    name: "Codex",
-    desc: "OpenAI Codex CLI",
-    category: "AI",
-    icon: "🧩",
-    commandSpec: { bin: "codex", packageName: "@openai/codex" },
-    installHint:
-      "Install Codex CLI (optionalDependency). If not available, run: npm i @openai/codex",
-  },
-  {
-    id: "grok",
-    name: "Grok",
-    desc: "Grok CLI",
-    category: "AI",
-    icon: "⚡",
-    commandSpec: { bin: "grok", packageName: "@vibe-kit/grok-cli" },
-    installHint:
-      "Install Grok CLI (optionalDependency). If not available, run: npm i @vibe-kit/grok-cli",
-  },
-  {
-    id: "kimi",
-    name: "Kimi",
-    desc: "Kimi CLI launcher (repo script)",
-    category: "AI",
-    icon: "🌙",
-    commandSpec: { preferRepoScript: "./kimi", bin: "kimi" },
-    installHint:
-      "Run ./build.sh to install Kimi deps into ./kimi-cli-deps (requires Python). Ensure the ./kimi script is executable.",
-  },
-];
+function computeToolAvailability(tool) {
+  const resolved = resolveCommand(tool.spec);
 
-/**
- * Compute availability:
- * - If resolved to local script or local bin: available true
- * - If resolved to plain command name: check PATH
- * - If resolved to npx: considered available (will attempt install/run)
- */
-function getToolStatus(tool) {
-  const resolved = resolveCommand(tool.commandSpec || {});
-  const envPath = buildPathEnv();
+  // If resolution is "path", we don't actually know if it exists. We'll mark "Maybe"
+  // unless a local bin or repo-script exists.
+  const existsLocally = resolved.resolution === "repo-script" || resolved.resolution === "local-bin";
 
-  let available = resolved.available;
-  let detectedPath = null;
+  const available =
+    resolved.available &&
+    (existsLocally || resolved.resolution === "npx" || resolved.resolution === "path");
 
-  if (resolved.resolution.startsWith("path:")) {
-    detectedPath = whichLikeSync(resolved.command, envPath);
-    available = Boolean(detectedPath);
-  } else if (resolved.resolution.startsWith("localbin:") || resolved.resolution.startsWith("script:") || resolved.resolution.startsWith("node-script:")) {
-    available = true;
-  } else if (resolved.resolution.startsWith("npx:")) {
-    available = true;
-  }
+  const badge = existsLocally ? "Ready" : resolved.resolution === "npx" ? "npx" : "Ready";
+  const badgeClass =
+    existsLocally || resolved.resolution === "npx" ? "badge-ok" : "badge-muted";
 
   return {
     id: tool.id,
     name: tool.name,
-    desc: tool.desc,
-    category: tool.category,
-    icon: tool.icon,
+    group: tool.group,
+    description: tool.description,
     available,
     resolution: resolved.resolution,
-    commandPreview: [resolved.command].concat(resolved.args || []).join(" "),
-    detectedPath,
-    installHint: tool.installHint || resolved.hint || null,
+    command: resolved.command,
+    args: resolved.args,
+    badge,
+    badgeClass,
+    hint: tool.installHint || resolved.hint || null,
   };
 }
 
 app.get("/healthz", (_req, res) => {
-  res.status(200).send("ok");
+  res.status(200).json({ ok: true });
 });
 
 app.get("/api/tools", (_req, res) => {
-  const tools = TOOL_DEFS.map(getToolStatus);
-  res.json({
-    ok: true,
-    tools,
-    env: {
-      platform: process.platform,
-      node: process.version,
-      workspaceDir: WORKSPACE_DIR,
-      cliHomeDir: CLI_HOME_DIR,
-    },
-  });
+  const tools = getToolRegistry().map(computeToolAvailability);
+  res.json({ tools });
 });
 
-// Minimal session "intent" endpoint (client can call this before WS to show errors early)
-app.post("/api/session", (req, res) => {
-  const toolId = String(req.body?.toolId || "").trim();
-  const tool = TOOL_DEFS.find((t) => t.id === toolId);
-  if (!tool) {
-    return res.status(400).json({ ok: false, error: `Unknown toolId: ${toolId}` });
-  }
-  const status = getToolStatus(tool);
-  return res.json({ ok: true, tool: status });
-});
-
-const sessions = new Map();
 /**
- * @typedef {{
- *  id: string,
- *  pty: import("node-pty").IPty,
- *  ws: import("ws").WebSocket,
- *  toolId: string,
- *  createdAt: number
- * }} Session
+ * Auth URL / device code detection:
+ * Many CLIs print a URL + code (device flow). We'll detect and send a structured message
+ * to the client so it can render a copy/open overlay.
  */
+function extractAuthHints(text) {
+  if (!text) return null;
+  const s = String(text);
 
-function safeJsonSend(ws, obj) {
-  if (!ws || ws.readyState !== ws.OPEN) return;
-  try {
-    ws.send(JSON.stringify(obj));
-  } catch {
-    // ignore
-  }
+  // URLs
+  const urlMatch = s.match(/https?:\/\/[^\s)]+/g);
+  const urls = urlMatch ? Array.from(new Set(urlMatch)) : [];
+
+  // Common device code patterns
+  const codeMatches = [];
+
+  // "Enter code XXXX-XXXX" / "code: XXXX-XXXX" / "Code XXXXXXXX"
+  const m1 = s.match(/\bcode\b[^A-Z0-9]*([A-Z0-9]{4,8}(?:-[A-Z0-9]{4,8})?)\b/i);
+  if (m1 && m1[1]) codeMatches.push(m1[1].toUpperCase());
+
+  // GitHub device flow sometimes prints short code or formatted
+  const m2 = s.match(/\b([A-Z0-9]{4}-[A-Z0-9]{4})\b/);
+  if (m2 && m2[1]) codeMatches.push(m2[1].toUpperCase());
+
+  const codes = Array.from(new Set(codeMatches)).slice(0, 3);
+
+  // Heuristic: only surface if it looks like auth
+  const looksLikeAuth =
+    /device|authorize|authenticat|verification|login|sign in|activate/i.test(s) ||
+    urls.some((u) => /github\.com\/login|microsoft\.com\/devicelogin|google\.com\/device|oauth|authorize/i.test(u));
+
+  if (!looksLikeAuth) return null;
+
+  const primaryUrl =
+    urls.find((u) => /github\.com\/login\/device/i.test(u)) ||
+    urls.find((u) => /microsoft\.com\/devicelogin/i.test(u)) ||
+    urls.find((u) => /google\.com\/device/i.test(u)) ||
+    urls[0] ||
+    null;
+
+  const primaryCode = codes[0] || null;
+
+  if (!primaryUrl && !primaryCode) return null;
+
+  return { url: primaryUrl, code: primaryCode };
 }
 
-function buildSpawnEnv() {
-  const env = { ...process.env };
+function buildCliEnv(toolId, extraEnv) {
+  const xdgConfig = path.join(CLI_HOME_DIR, "config");
+  const xdgData = path.join(CLI_HOME_DIR, "data");
+  const xdgCache = path.join(CLI_HOME_DIR, "cache");
 
-  env.PATH = buildPathEnv();
+  for (const d of [xdgConfig, xdgData, xdgCache]) {
+    if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+  }
 
-  // Prefer a writable HOME for tools that need it
-  env.HOME = CLI_HOME_DIR;
-  env.USERPROFILE = CLI_HOME_DIR;
+  // Per-tool home helps avoid config collisions while still persisting.
+  const toolHome = path.join(CLI_HOME_DIR, "tools", toolId);
+  if (!fs.existsSync(toolHome)) fs.mkdirSync(toolHome, { recursive: true });
 
-  // Some CLIs use XDG
-  env.XDG_CONFIG_HOME = path.join(CLI_HOME_DIR, ".config");
-  env.XDG_CACHE_HOME = path.join(CLI_HOME_DIR, ".cache");
-  env.XDG_DATA_HOME = path.join(CLI_HOME_DIR, ".local", "share");
-
-  env.TERM = env.TERM || "xterm-256color";
-  env.COLORTERM = env.COLORTERM || "truecolor";
-
-  // Prevent some CLIs from trying to open browsers in headless envs
-  if (!env.BROWSER) env.BROWSER = "false";
+  const env = {
+    ...process.env,
+    PATH: buildPathEnv(),
+    HOME: toolHome,
+    USERPROFILE: toolHome, // windows-ish
+    XDG_CONFIG_HOME: xdgConfig,
+    XDG_DATA_HOME: xdgData,
+    XDG_CACHE_HOME: xdgCache,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    FORCE_COLOR: "1",
+    // Encourage device flow / no browser in headless environments
+    BROWSER: process.env.BROWSER || "false",
+    NO_BROWSER: process.env.NO_BROWSER || "1",
+    ...extraEnv,
+  };
 
   return env;
 }
 
-function normalizeToolId(raw) {
-  const v = String(raw || "").trim().toLowerCase();
-  return v || "shell";
-}
+wss.on("connection", (socket) => {
+  let ptyProcess = null;
+  let toolMeta = null;
 
-function resolveToolCommand(toolId) {
-  const tool = TOOL_DEFS.find((t) => t.id === toolId);
-  if (!tool) return null;
-
-  if (toolId === "shell") {
-    const d = shellDefault();
-    return { tool, resolved: { command: d.command, args: d.args, resolution: "default-shell", available: true } };
-  }
-
-  const resolved = resolveCommand(tool.commandSpec || {});
-  const envPath = buildPathEnv();
-  let available = resolved.available;
-  let detectedPath = null;
-
-  if (resolved.resolution.startsWith("path:")) {
-    detectedPath = whichLikeSync(resolved.command, envPath);
-    available = Boolean(detectedPath);
-  }
-
-  return { tool, resolved: { ...resolved, available, detectedPath } };
-}
-
-wss.on("connection", (ws, req) => {
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  const toolId = normalizeToolId(url.searchParams.get("tool"));
-  const meta = resolveToolCommand(toolId);
-
-  if (!meta) {
-    safeJsonSend(ws, { type: "error", message: `Unknown tool: ${toolId}` });
-    ws.close();
-    return;
-  }
-
-  const { tool, resolved } = meta;
-
-  if (!resolved.available && !resolved.resolution.startsWith("npx:")) {
-    safeJsonSend(ws, {
-      type: "error",
-      message: `Tool not installed: ${tool.name}.`,
-      installHint: tool.installHint || null,
-      resolution: resolved.resolution,
-      commandPreview: [resolved.command].concat(resolved.args || []).join(" "),
-    });
-    ws.close();
-    return;
-  }
-
-  const cols = Number(url.searchParams.get("cols") || 80);
-  const rows = Number(url.searchParams.get("rows") || 24);
-
-  const env = buildSpawnEnv();
-  const cwd = WORKSPACE_DIR;
-
-  let ptyProcess;
-  try {
-    ptyProcess = pty.spawn(resolved.command, resolved.args || [], {
-      name: "xterm-256color",
-      cols: Number.isFinite(cols) ? cols : 80,
-      rows: Number.isFinite(rows) ? rows : 24,
-      cwd,
-      env,
-    });
-  } catch (e) {
-    safeJsonSend(ws, { type: "error", message: `Failed to spawn: ${e?.message || String(e)}` });
-    ws.close();
-    return;
-  }
-
-  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  /** @type {Session} */
-  const session = { id, pty: ptyProcess, ws, toolId, createdAt: Date.now() };
-  sessions.set(id, session);
-
-  safeJsonSend(ws, {
-    type: "ready",
-    sessionId: id,
-    tool: {
-      id: tool.id,
-      name: tool.name,
-      resolution: resolved.resolution,
-      commandPreview: [resolved.command].concat(resolved.args || []).join(" "),
-    },
-    cwd,
-    home: CLI_HOME_DIR,
-    hostname: os.hostname(),
-  });
-
-  ptyProcess.onData((data) => {
-    if (ws.readyState === ws.OPEN) ws.send(data);
-  });
-
-  ptyProcess.onExit(({ exitCode, signal }) => {
-    safeJsonSend(ws, { type: "exit", exitCode, signal });
+  function safeSend(obj) {
     try {
-      ws.close();
+      socket.send(JSON.stringify(obj));
     } catch {
       // ignore
     }
-    sessions.delete(id);
-  });
+  }
 
-  ws.on("message", (raw) => {
-    let msg;
+  socket.on("message", (raw) => {
+    let msg = null;
     try {
-      msg = JSON.parse(String(raw));
+      msg = JSON.parse(raw.toString());
     } catch {
-      // treat as raw input
-      ptyProcess.write(String(raw));
       return;
     }
 
-    if (!msg || typeof msg !== "object") return;
+    if (!msg || typeof msg.type !== "string") return;
 
-    if (msg.type === "input" && typeof msg.data === "string") {
-      ptyProcess.write(msg.data);
+    if (msg.type === "start") {
+      const toolId = typeof msg.toolId === "string" ? msg.toolId : "shell";
+      const tool = getToolById(toolId) || getToolById("shell");
+      toolMeta = tool;
+
+      const resolved = resolveCommand(tool.spec);
+
+      // Spawn env + cwd
+      const env = buildCliEnv(tool.id, tool.spawn?.env || {});
+      const cwd = tool.spawn?.cwd || WORKSPACE_DIR;
+
+      // Give client tool metadata
+      safeSend({
+        type: "tool",
+        tool: {
+          id: tool.id,
+          name: tool.name,
+          description: tool.description,
+          resolution: resolved.resolution,
+          hint: tool.installHint || resolved.hint || null,
+        },
+      });
+
+      try {
+        ptyProcess = pty.spawn(resolved.command, resolved.args || [], {
+          name: "xterm-256color",
+          cols: Number(msg.cols) || 80,
+          rows: Number(msg.rows) || 24,
+          cwd,
+          env,
+        });
+      } catch (err) {
+        safeSend({
+          type: "system",
+          level: "error",
+          message: `Failed to start ${tool.name}: ${err?.message || String(err)}`,
+        });
+        return;
+      }
+
+      ptyProcess.onData((data) => {
+        // Pass through raw terminal output
+        safeSend({ type: "data", data });
+
+        // Also scan for auth hints
+        const hint = extractAuthHints(data);
+        if (hint) {
+          safeSend({
+            type: "auth",
+            toolId: tool.id,
+            toolName: tool.name,
+            url: hint.url,
+            code: hint.code,
+          });
+        }
+      });
+
+      ptyProcess.onExit(({ exitCode, signal }) => {
+        safeSend({
+          type: "exit",
+          exitCode,
+          signal,
+        });
+      });
+
       return;
     }
 
-    if (msg.type === "resize") {
-      const c = Number(msg.cols);
-      const r = Number(msg.rows);
-      if (Number.isFinite(c) && Number.isFinite(r) && c > 0 && r > 0) {
+    if (msg.type === "input") {
+      if (ptyProcess && typeof msg.data === "string") {
         try {
-          ptyProcess.resize(c, r);
+          ptyProcess.write(msg.data);
         } catch {
           // ignore
         }
@@ -510,32 +450,38 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
-    if (msg.type === "signal") {
-      const sig = String(msg.signal || "SIGINT");
-      try {
-        ptyProcess.kill(sig);
-      } catch {
-        // ignore
+    if (msg.type === "resize") {
+      if (ptyProcess) {
+        const cols = Math.max(2, Number(msg.cols) || 80);
+        const rows = Math.max(2, Number(msg.rows) || 24);
+        try {
+          ptyProcess.resize(cols, rows);
+        } catch {
+          // ignore
+        }
       }
       return;
     }
-  });
 
-  ws.on("close", () => {
-    sessions.delete(id);
-    try {
-      ptyProcess.kill();
-    } catch {
-      // ignore
+    if (msg.type === "stop") {
+      if (ptyProcess) {
+        try {
+          ptyProcess.kill();
+        } catch {
+          // ignore
+        }
+      }
     }
   });
 
-  ws.on("error", () => {
-    sessions.delete(id);
-    try {
-      ptyProcess.kill();
-    } catch {
-      // ignore
+  socket.on("close", () => {
+    if (ptyProcess) {
+      try {
+        ptyProcess.kill();
+      } catch {
+        // ignore
+      }
+      ptyProcess = null;
     }
   });
 });
@@ -543,8 +489,6 @@ wss.on("connection", (ws, req) => {
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`Pocket Terminal listening on :${PORT}`);
-  // eslint-disable-next-line no-console
-  console.log(`WORKSPACE_DIR=${WORKSPACE_DIR}`);
-  // eslint-disable-next-line no-console
-  console.log(`CLI_HOME_DIR=${CLI_HOME_DIR}`);
 });
+
+module.exports = server;
