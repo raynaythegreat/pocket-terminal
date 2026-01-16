@@ -1,4 +1,4 @@
-const { describe, it, expect } = require("vitest");
+// vitest globals are available via config
 const {
   hashPassword,
   verifyPassword,

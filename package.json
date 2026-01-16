@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "vitest run"
+    "test": "vitest run --globals"
   },
   "dependencies": {
     "dotenv": "^16.3.1",

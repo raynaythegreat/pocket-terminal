@@ -1,0 +1,6 @@
+{
+  // Enable reading .env envvars into VS Code integrated terminal
+  "python.terminal.useEnvFile": true,
+  // Ensure the default env file path is the workspace .env (adjust if you use a different path)
+  "python.envFile": "${workspaceFolder}/.env"
+}

@@ -96,7 +96,8 @@ function initTerminal() {
 
     term.onData((data) => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(data);
+        // Send structured data messages so server can distinguish control messages
+        ws.send(JSON.stringify({ type: "data", data }));
       }
     });
 
@@ -314,9 +315,10 @@ function connectWebSocket(toolId) {
     reconnectDelay = 1000;
     updateConnectionStatus("connected");
     
-    // Send initial terminal size
+    // Send initial terminal size (use explicit properties)
     if (term && fitAddon) {
-      const { cols, rows } = term;
+      const cols = term.cols || 80;
+      const rows = term.rows || 24;
       ws.send(JSON.stringify({ type: "resize", cols, rows }));
     }
   };
