@@ -20,63 +20,56 @@
       </div>
     </div>
 
-    <!-- Login Screen -->
-    <div id="login-screen" class="screen">
+    <!-- Login Screen (Hidden by default, kept for structure) -->
+    <div id="login-screen" class="screen hidden">
       <div class="login-container">
-        <div class="app-logo">
-          <span class="logo-icon">PT</span>
-        </div>
         <h1>Pocket Terminal</h1>
-        <p>Secure AI-powered terminal access, optimized for your phone.</p>
-        <div class="login-form">
-          <label for="password-input" class="text-sm">Password</label>
-          <input
-            id="password-input"
-            type="password"
-            autocomplete="current-password"
-            placeholder="Enter terminal password"
-            inputmode="text"
-          />
-          <button id="toggle-password-visibility" type="button" class="secondary-btn btn-sm" aria-label="Show password">Show</button>
-          <label style="display:flex;align-items:center;margin-top:8px;gap:8px;">
-            <input id="remember-device" type="checkbox" />
-            <span class="text-sm">Remember this device (30 days)</span>
-          </label>
-          <button
-            id="login-button"
-            class="primary-btn full-width"
-            type="button"
-          >
-            Unlock Terminal
-          </button>
-          <p id="login-error" class="error-text text-sm"></p>
-        </div>
+        <p>Authentication has been disabled.</p>
+        <button id="bypass-login" class="primary-btn full-width">Go to Terminal</button>
       </div>
     </div>
 
-    <!-- Launcher Screen -->
-    <div id="launcher-screen" class="screen hidden">
+    <!-- Launcher Screen (Visible by default) -->
+    <div id="launcher-screen" class="screen">
       <header class="top-bar">
         <div class="top-bar-left">
           <h2>Pocket Terminal</h2>
           <p class="text-xs text-muted">Choose a tool to start a session</p>
-        </div>
-        <div class="top-bar-right">
-          <button id="logout-button" class="secondary-btn btn-sm" type="button">
-            Logout
-          </button>
         </div>
       </header>
 
       <main class="launcher-main">
         <section class="cli-grid-section">
           <h3>CLI Tools</h3>
-          <p class="text-sm text-muted">
-            Tap a tool to start a new terminal session. Use interactive commands like 'gh auth login' or 'gcloud auth login' to authenticate within the terminal.
-          </p>
-          
-          <div id="cli-tools-grid" class="cli-grid">
-            <!-- CLI tool cards will be dynamically inserted here -->
+          <div id="cli-tools-grid" class="tools-grid">
+            <button class="tool-card" onclick="startSession('shell')">
+              <div class="tool-icon">🐚</div>
+              <div class="tool-info">
+                <span class="tool-name">Shell</span>
+                <span class="tool-desc">Standard Bash session</span>
+              </div>
+            </button>
+            <button class="tool-card" onclick="startSession('gh')">
+              <div class="tool-icon">🐙</div>
+              <div class="tool-info">
+                <span class="tool-name">GitHub CLI</span>
+                <span class="tool-desc">Manage repos & PRs</span>
+              </div>
+            </button>
+            <button class="tool-card" onclick="startSession('copilot')">
+              <div class="tool-icon">🤖</div>
+              <div class="tool-info">
+                <span class="tool-name">Copilot</span>
+                <span class="tool-desc">AI Pair Programmer</span>
+              </div>
+            </button>
+            <button class="tool-card" onclick="startSession('gemini')">
+              <div class="tool-icon">✨</div>
+              <div class="tool-info">
+                <span class="tool-name">Gemini</span>
+                <span class="tool-desc">Google AI CLI</span>
+              </div>
+            </button>
           </div>
         </section>
       </main>
@@ -85,43 +78,22 @@
     <!-- Terminal Screen -->
     <div id="terminal-screen" class="screen hidden">
       <header class="terminal-header">
-        <div class="terminal-header-left">
-          <button id="back-to-launcher" class="secondary-btn btn-sm">
-            ← Back
+        <div class="header-left">
+          <button id="back-to-launcher" class="icon-btn" aria-label="Back">
+            ←
           </button>
-          <span id="current-tool-name" class="terminal-tool-name">Terminal</span>
+          <span id="active-tool-name">Shell</span>
         </div>
-        <div class="terminal-header-right">
-          <!-- Mobile Text Selection Controls -->
-          <button id="select-all-btn" class="terminal-action-btn" title="Select All" style="display: none;">
-            📋
-          </button>
-          <button id="copy-btn" class="terminal-action-btn" title="Copy" style="display: none;">
-            📄
-          </button>
-          <button id="paste-btn" class="terminal-action-btn" title="Paste" style="display: none;">
-            📋
-          </button>
-          <button id="logout-button-terminal" class="secondary-btn btn-sm">
-            Logout
-          </button>
+        <div class="header-right">
+          <button id="clear-terminal" class="secondary-btn btn-sm">Clear</button>
         </div>
       </header>
-      
-      <!-- Mobile Selection Toolbar -->
-      <div id="selection-toolbar" class="selection-toolbar hidden">
-        <button id="copy-selection-btn" class="toolbar-btn">Copy</button>
-        <button id="clear-selection-btn" class="toolbar-btn">Clear</button>
-      </div>
-
-      <div id="terminal-container" class="terminal-container"></div>
+      <div id="terminal-container"></div>
     </div>
 
-    <!-- XTerm.js Library -->
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-    
-    <!-- Terminal Script -->
     <script src="/terminal.js"></script>
   </body>
 </html>

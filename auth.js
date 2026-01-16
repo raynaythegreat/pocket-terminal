@@ -1,150 +1,58 @@
-const crypto = require("crypto");
+/**
+ * Authentication logic simplified to allow all access.
+ * Password requirements have been removed.
+ */
 
 /**
- * Hash a password using SHA-256.
- * NOTE: This is intentionally simple for CLI-style auth.
- * For real multi-user systems, use a strong KDF (bcrypt/scrypt/argon2).
- * @param {string} password
- * @returns {string}
+ * Hash a password. (Unused but kept for API compatibility)
  */
 function hashPassword(password) {
-  const value = String(password == null ? "" : password);
-  return crypto.createHash("sha256").update(value.trim()).digest("hex");
+  return "";
 }
 
 /**
- * Verify a raw password against a stored hash.
- * @param {string} rawPassword
- * @param {string | null} storedHash
- * @returns {boolean}
+ * Verify a password. (Always returns true)
  */
 function verifyPassword(rawPassword, storedHash) {
-  if (!storedHash) return false;
-  const candidate = hashPassword(rawPassword);
-  // Use timing-safe comparison where available
-  try {
-    const a = Buffer.from(candidate, "hex");
-    const b = Buffer.from(storedHash, "hex");
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
-  } catch {
-    // Fallback if timingSafeEqual throws for any reason
-    return candidate === storedHash;
-  }
+  return true;
 }
 
 /**
- * Create a new session token in the provided sessions map.
- * @param {Map<string, { expiresAt: number }>} sessions
- * @param {number} ttlMs
- * @returns {string} token
+ * Create a new session token.
  */
 function createSession(sessions, ttlMs) {
-  const token = crypto.randomBytes(32).toString("hex");
-  const expiresAt = Date.now() + ttlMs;
-  sessions.set(token, { expiresAt });
-  return token;
+  return "open-access-session";
 }
 
 /**
- * Check if a session token is valid.
- * @param {Map<string, { expiresAt: number }>} sessions
- * @param {string | null | undefined} token
- * @returns {boolean}
+ * Check if a session token is valid. (Always returns true)
  */
 function isValidSession(sessions, token) {
-  if (!token) return false;
-  const entry = sessions.get(token);
-  if (!entry) return false;
-  if (Date.now() > entry.expiresAt) {
-    sessions.delete(token);
-    return false;
-  }
   return true;
 }
 
 /**
  * Revoke a session token.
- * @param {Map<string, { expiresAt: number }>} sessions
- * @param {string | null | undefined} token
  */
 function revokeSession(sessions, token) {
-  if (!token) return;
-  sessions.delete(token);
+  // No-op
 }
 
 /**
- * Clean up expired sessions from the sessions map.
- * @param {Map<string, { expiresAt: number }>} sessions
- * @returns {number} Number of sessions cleaned up
+ * Clean up expired sessions.
  */
 function cleanupExpiredSessions(sessions) {
-  const now = Date.now();
-  let cleaned = 0;
-  
-  for (const [token, session] of sessions.entries()) {
-    if (now > session.expiresAt) {
-      sessions.delete(token);
-      cleaned++;
-    }
-  }
-  
-  return cleaned;
+  return 0;
 }
 
 /**
- * Determine password configuration based on environment.
- *
- * Modes:
- * - "env":        using TERMINAL_PASSWORD from env
- * - "default":    using built-in default password (non-production only)
- * - "misconfigured": TERMINAL_PASSWORD missing in production; no logins allowed
- *
- * @param {{ TERMINAL_PASSWORD?: string | undefined, NODE_ENV?: string | undefined }} env
- * @param {{ warn: Function, info?: Function }} logger
- * @returns {{ mode: "env" | "default" | "misconfigured", passwordHash: string | null }}
+ * Determine password configuration. 
+ * Modified to 'none' mode.
  */
 function buildPasswordConfig(env, logger) {
-  const envPassword = env.TERMINAL_PASSWORD;
-  const nodeEnv = env.NODE_ENV || "development";
-  const isProd = nodeEnv === "production";
-
-  if (envPassword && envPassword.trim().length > 0) {
-    if (logger && typeof logger.info === "function") {
-      logger.info("Using TERMINAL_PASSWORD from environment.");
-    }
-    return {
-      mode: "env",
-      passwordHash: hashPassword(envPassword.trim()),
-    };
-  }
-
-  if (isProd) {
-    // In production, we require TERMINAL_PASSWORD to be set
-    if (logger && typeof logger.warn === "function") {
-      logger.warn(
-        "CRITICAL: TERMINAL_PASSWORD not set in production environment. " +
-        "Authentication is disabled until this is configured properly."
-      );
-    }
-    return {
-      mode: "misconfigured",
-      passwordHash: null,
-    };
-  }
-
-  // Development/testing: use default password with warning
-  const defaultPassword = "Superprimitive69!";
-  if (logger && typeof logger.warn === "function") {
-    logger.warn(
-      `Using default password "${defaultPassword}" in ${nodeEnv} mode. ` +
-      "Set TERMINAL_PASSWORD environment variable for production."
-    );
-  }
-  
   return {
-    mode: "default",
-    passwordHash: hashPassword(defaultPassword),
+    mode: "none",
+    passwordHash: null,
   };
 }
 
