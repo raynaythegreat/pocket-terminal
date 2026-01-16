@@ -4,11 +4,11 @@ Web-based terminal + AI CLI launchers, designed to be usable from a phone.
 
 ## Local setup
 
-1. `cp .env.example .env` and set `TERMINAL_PASSWORD`
+1. `cp .env.example .env` (optional)
 2. `npm ci`
 3. `npm start`
 
-Open `http://localhost:3000`, enter the password, then use **Quick Launch**.
+Open `http://localhost:3000`, then use **Quick Launch**.
 
 ## Workspace + persistence
 

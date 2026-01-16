@@ -7,16 +7,22 @@ let connectionStatus = "disconnected";
 window.addEventListener("DOMContentLoaded", () => {
   const backButton = document.getElementById("back-to-launcher");
   const clearButton = document.getElementById("clear-terminal");
+  const reconnectBtn = document.getElementById("reconnect-btn");
 
-  if (backButton) {
-    backButton.addEventListener("click", switchToLauncher);
-  }
+  if (backButton) backButton.addEventListener("click", switchToLauncher);
+  if (clearButton) clearButton.addEventListener("click", () => term && term.clear());
 
-  if (clearButton) {
-    clearButton.addEventListener("click", () => term && term.clear());
+  if (reconnectBtn) {
+    reconnectBtn.addEventListener("click", () => {
+      if (!currentTool) currentTool = "shell";
+      startSession(currentTool);
+    });
   }
 
   initTerminal();
+
+  // Ensure we always start on the launcher (no auth/login screen)
+  switchToScreen("launcher-screen");
 
   // Handle window resize
   window.addEventListener("resize", () => {
@@ -24,7 +30,9 @@ window.addEventListener("DOMContentLoaded", () => {
       setTimeout(() => {
         fitAddon.fit();
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+          ws.send(
+            JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows })
+          );
         }
       }, 100);
     }
@@ -61,15 +69,24 @@ function initTerminal() {
 
 function startSession(toolId) {
   currentTool = toolId;
-  document.getElementById("active-tool-name").textContent = toolId.toUpperCase();
-  
+  const activeToolName = document.getElementById("active-tool-name");
+  if (activeToolName) activeToolName.textContent = String(toolId).toUpperCase();
+
   switchToScreen("terminal-screen");
-  
+
   if (ws) ws.close();
 
+  // If terminal isn't ready for some reason, fail gracefully.
+  if (!term) {
+    updateConnectionBanner(true, "Terminal failed to initialize.");
+    return;
+  }
+
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${window.location.host}/ws?tool=${toolId}&cols=${term.cols}&rows=${term.rows}`;
-  
+  const wsUrl = `${protocol}//${window.location.host}/ws?tool=${encodeURIComponent(
+    toolId
+  )}&cols=${term.cols}&rows=${term.rows}`;
+
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
@@ -86,13 +103,14 @@ function startSession(toolId) {
   ws.onclose = () => {
     connectionStatus = "disconnected";
     // If we are still on the terminal screen, show the banner
-    if (!document.getElementById("terminal-screen").classList.contains("hidden")) {
-      updateConnectionBanner(true, "Disconnected. Tap to reconnect.");
+    const terminalScreen = document.getElementById("terminal-screen");
+    if (terminalScreen && !terminalScreen.classList.contains("hidden")) {
+      updateConnectionBanner(true, "Disconnected. Tap Retry to reconnect.");
     }
   };
 
   ws.onerror = () => {
-    updateConnectionBanner(true, "Connection error.");
+    updateConnectionBanner(true, "Connection error. Tap Retry to reconnect.");
   };
 }
 
@@ -106,8 +124,9 @@ function switchToLauncher() {
 
 function switchToScreen(screenId) {
   document.querySelectorAll(".screen").forEach((s) => s.classList.add("hidden"));
-  document.getElementById(screenId).classList.remove("hidden");
-  
+  const el = document.getElementById(screenId);
+  if (el) el.classList.remove("hidden");
+
   if (screenId === "terminal-screen" && fitAddon) {
     setTimeout(() => fitAddon.fit(), 50);
   }
@@ -116,12 +135,16 @@ function switchToScreen(screenId) {
 function updateConnectionBanner(show, text = "") {
   const banner = document.getElementById("connection-status");
   const bannerText = document.getElementById("connection-text");
-  if (!banner) return;
+  const reconnectBtn = document.getElementById("reconnect-btn");
+
+  if (!banner || !bannerText || !reconnectBtn) return;
 
   if (show) {
+    if (text) bannerText.textContent = text;
     banner.classList.remove("hidden");
-    bannerText.textContent = text;
+    reconnectBtn.classList.remove("hidden");
   } else {
     banner.classList.add("hidden");
+    reconnectBtn.classList.add("hidden");
   }
 }

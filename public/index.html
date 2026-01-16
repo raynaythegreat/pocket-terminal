@@ -3,20 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <title>Pocket Terminal</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="theme-color" content="#09090b" />
     <link rel="stylesheet" href="/style.css" />
     <!-- XTerm.js CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"
+    />
   </head>
   <body>
     <!-- Connection Status Banner -->
-    <div id="connection-status" class="connection-banner hidden">
+    <div id="connection-status" class="connection-banner hidden" role="status" aria-live="polite">
       <div class="connection-content">
         <span id="connection-text">Connecting...</span>
-        <button id="reconnect-btn" class="reconnect-btn hidden">Retry</button>
+        <button id="reconnect-btn" class="reconnect-btn hidden" type="button">
+          Retry
+        </button>
       </div>
     </div>
 
@@ -33,53 +44,53 @@
         <section class="cli-grid-section">
           <h3>CLI Tools</h3>
           <div id="cli-tools-grid" class="tools-grid">
-            <button class="tool-card" onclick="startSession('shell')">
+            <button class="tool-card" onclick="startSession('shell')" type="button">
               <div class="tool-icon">🐚</div>
               <div class="tool-info">
                 <span class="tool-name">Shell</span>
                 <span class="tool-desc">Standard Bash session</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('gh')">
+            <button class="tool-card" onclick="startSession('gh')" type="button">
               <div class="tool-icon">🐙</div>
               <div class="tool-info">
                 <span class="tool-name">GitHub CLI</span>
                 <span class="tool-desc">Manage repos & PRs</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('copilot')">
+            <button class="tool-card" onclick="startSession('copilot')" type="button">
               <div class="tool-icon">🤖</div>
               <div class="tool-info">
                 <span class="tool-name">Copilot</span>
                 <span class="tool-desc">AI Pair Programmer</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('gemini')">
+            <button class="tool-card" onclick="startSession('gemini')" type="button">
               <div class="tool-icon">✨</div>
               <div class="tool-info">
                 <span class="tool-name">Gemini</span>
                 <span class="tool-desc">Google AI CLI</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('gcloud')">
+            <button class="tool-card" onclick="startSession('gcloud')" type="button">
               <div class="tool-icon">☁️</div>
               <div class="tool-info">
                 <span class="tool-name">gcloud</span>
                 <span class="tool-desc">Google Cloud SDK</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('opencode')">
-              <div class="tool-icon">📂</div>
+            <button class="tool-card" onclick="startSession('opencode')" type="button">
+              <div class="tool-icon">🧰</div>
               <div class="tool-info">
-                <span class="tool-name">OpenCode</span>
-                <span class="tool-desc">Local project launcher</span>
+                <span class="tool-name">openCode</span>
+                <span class="tool-desc">Optional CLI tool</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('kimi')">
-              <div class="tool-icon">🌙</div>
+            <button class="tool-card" onclick="startSession('kimi')" type="button">
+              <div class="tool-icon">🧠</div>
               <div class="tool-info">
                 <span class="tool-name">Kimi</span>
-                <span class="tool-desc">Moonshot AI CLI</span>
+                <span class="tool-desc">Optional CLI tool</span>
               </div>
             </button>
           </div>
@@ -89,25 +100,29 @@
 
     <!-- Terminal Screen -->
     <div id="terminal-screen" class="screen hidden">
-      <header class="terminal-header">
-        <div class="header-left">
-          <button id="back-to-launcher" class="icon-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-          </button>
-          <span id="active-tool-name" class="tool-badge">SHELL</span>
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <h2 id="active-tool-name">SHELL</h2>
+          <p class="text-xs text-muted">Tap screen to focus. Use Back to exit.</p>
         </div>
-        <div class="header-right">
-          <button id="clear-terminal" class="secondary-btn btn-sm">Clear</button>
+        <div class="top-bar-right">
+          <button id="clear-terminal" class="secondary-btn btn-sm" type="button">
+            Clear
+          </button>
+          <button id="back-to-launcher" class="secondary-btn btn-sm" type="button">
+            Back
+          </button>
         </div>
       </header>
-      <div id="terminal-container"></div>
+
+      <main id="terminal-container" class="terminal-container" aria-label="Terminal"></main>
     </div>
 
-    <!-- XTerm.js Scripts -->
+    <!-- XTerm.js -->
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+
+    <!-- App -->
     <script src="/terminal.js"></script>
   </body>
 </html>
