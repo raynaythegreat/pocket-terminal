@@ -60,7 +60,7 @@ for (const dir of [CLI_HOME_DIR, WORKSPACE_DIR, LOCAL_BIN_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-// CLI tool definitions with cross-access capabilities
+// CLI tool definitions with interactive authentication
 const CLI_TOOLS = {
   shell: {
     id: "shell",
@@ -75,181 +75,98 @@ const CLI_TOOLS = {
   gh: {
     id: "gh",
     name: "GitHub CLI",
-    description: "GitHub command line interface",
+    description: "GitHub command line interface - use 'gh auth login' to authenticate",
     command: "gh",
     args: [],
     available: false,
     category: "git",
-    authRequired: true,
     setupHint: "Run 'gh auth login' to authenticate with GitHub",
     icon: "🐙"
   },
   copilot: {
     id: "copilot",
     name: "GitHub Copilot",
-    description: "AI pair programmer CLI",
+    description: "AI pair programmer CLI - authenticate via 'gh auth login'",
     command: "github-copilot-cli",
     args: [],
     available: false,
     category: "ai",
-    authRequired: true,
-    setupHint: "Requires GitHub authentication (gh auth login)",
+    setupHint: "Authenticate with 'gh auth login' first",
     icon: "🤖"
   },
   gemini: {
     id: "gemini",
     name: "Gemini AI",
-    description: "Google's conversational AI assistant",
-    command: "gcloud",
-    args: ["ai", "chat"],
+    description: "Google's conversational AI - use 'gcloud auth login' to authenticate",
+    command: "gemini-cli",
+    args: [],
     available: false,
     category: "ai",
-    authRequired: true,
-    setupHint: "Run 'gcloud auth login' and set up your project",
+    setupHint: "Run 'gcloud auth login' to authenticate",
     icon: "🔮"
   },
   gcloud: {
     id: "gcloud",
     name: "Google Cloud",
-    description: "Google Cloud Platform CLI",
+    description: "Google Cloud Platform CLI - use 'gcloud auth login' to authenticate",
     command: "gcloud",
     args: [],
     available: false,
     category: "cloud",
-    authRequired: true,
     setupHint: "Run 'gcloud auth login' to authenticate",
     icon: "☁️"
   },
-  openai: {
-    id: "openai",
-    name: "OpenAI CLI",
-    description: "OpenAI command line interface",
-    command: "openai",
+  opencode: {
+    id: "opencode",
+    name: "OpenCode",
+    description: "AI coding assistant - interactive authentication",
+    command: "opencode",
     args: [],
     available: false,
     category: "ai",
-    authRequired: true,
-    setupHint: "Set OPENAI_API_KEY environment variable",
-    icon: "🎯"
+    setupHint: "Tool will prompt for authentication when needed",
+    icon: "⚡"
   },
-  anthropic: {
-    id: "anthropic",
-    name: "Claude CLI",
-    description: "Anthropic's Claude AI assistant",
-    command: "claude",
+  kimi: {
+    id: "kimi",
+    name: "Kimi",
+    description: "AI assistant CLI - interactive authentication",
+    command: "kimi",
     args: [],
     available: false,
     category: "ai",
-    authRequired: true,
-    setupHint: "Set ANTHROPIC_API_KEY environment variable",
-    icon: "🧠"
+    setupHint: "Tool will prompt for authentication when needed",
+    icon: "🎯"
   }
 };
 
-// Check tool availability
-function checkToolAvailability() {
-  const { execSync } = require("child_process");
-  
-  for (const tool of Object.values(CLI_TOOLS)) {
-    if (tool.id === "shell") continue; // Shell is always available
-    
-    try {
-      // Check if command exists in PATH or local bin
-      const paths = [
-        ...process.env.PATH.split(path.delimiter),
-        LOCAL_BIN_DIR,
-        NODE_BIN_DIR
-      ];
-      
-      let found = false;
-      for (const p of paths) {
-        const fullPath = path.join(p, tool.command + (process.platform === "win32" ? ".exe" : ""));
-        if (fs.existsSync(fullPath)) {
-          found = true;
-          break;
-        }
-      }
-      
-      if (found) {
-        // Double-check by trying to run --version or --help
-        execSync(`${tool.command} --version 2>/dev/null || ${tool.command} --help 2>/dev/null`, 
-          { timeout: 5000, stdio: 'ignore' });
-        tool.available = true;
-      }
-    } catch (error) {
-      // Tool not available
-      tool.available = false;
-    }
-  }
-}
-
-// Check tool availability on startup
-checkToolAvailability();
-
-// Enhanced environment for CLI tools
-function createEnhancedEnv() {
-  const env = { ...process.env };
-  
-  // Add local bin directories to PATH
-  const pathSeparator = process.platform === "win32" ? ";" : ":";
-  const existingPath = env.PATH || "";
-  env.PATH = [LOCAL_BIN_DIR, NODE_BIN_DIR, existingPath].join(pathSeparator);
-  
-  // Set up CLI home directories
-  env.HOME = CLI_HOME_DIR;
-  env.CLI_HOME = CLI_HOME_DIR;
-  
-  // GitHub CLI configuration
-  env.GH_CONFIG_DIR = path.join(CLI_HOME_DIR, ".config", "gh");
-  
-  // Google Cloud configuration
-  env.CLOUDSDK_CONFIG = path.join(CLI_HOME_DIR, ".config", "gcloud");
-  
-  // Ensure config directories exist
-  for (const configDir of [env.GH_CONFIG_DIR, env.CLOUDSDK_CONFIG]) {
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
-  }
-  
-  return env;
-}
-
-// Middleware
-app.use(express.json());
-app.use(express.static("public", {
-  maxAge: process.env.NODE_ENV === "production" ? "1h" : "0",
-  etag: true
-}));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.static("public"));
 
 // Health check endpoint
 app.get("/healthz", (req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+  res.status(200).json({ status: "healthy", timestamp: new Date().toISOString() });
 });
 
-// Authentication endpoint
+// Authentication endpoints
 app.post("/auth/login", (req, res) => {
   const { password } = req.body;
 
   if (PASSWORD_MODE === "misconfigured") {
-    return res.status(503).json({ 
-      error: "Authentication service misconfigured", 
-      message: "Server cannot authenticate users in current configuration" 
+    return res.status(500).json({ 
+      success: false, 
+      error: "Server authentication is not properly configured" 
     });
   }
 
   if (!verifyPassword(password, PASSWORD_HASH)) {
-    return res.status(401).json({ 
-      error: "Invalid password", 
-      message: "The provided password is incorrect" 
-    });
+    return res.status(401).json({ success: false, error: "Invalid password" });
   }
 
   const token = createSession(sessions, SESSION_TTL_MS);
-  res.json({ token, expiresIn: SESSION_TTL_MS });
+  res.json({ success: true, token });
 });
 
-// Logout endpoint
 app.post("/auth/logout", (req, res) => {
   const token = req.headers.authorization?.replace("Bearer ", "");
   revokeSession(sessions, token);
@@ -257,240 +174,309 @@ app.post("/auth/logout", (req, res) => {
 });
 
 // CLI tools endpoint
-app.get("/api/tools", (req, res) => {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  
-  if (!isValidSession(sessions, token)) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-
-  // Refresh tool availability
-  checkToolAvailability();
-  
-  res.json({
-    tools: Object.values(CLI_TOOLS),
-    authStatus: {
-      github: !!process.env.GITHUB_TOKEN,
-      gcloud: fs.existsSync(path.join(CLI_HOME_DIR, ".config", "gcloud", "credentials.db")),
-      openai: !!process.env.OPENAI_API_KEY,
-      anthropic: !!process.env.ANTHROPIC_API_KEY
-    }
-  });
+app.get("/api/tools", authenticateToken, (req, res) => {
+  const toolsWithAvailability = Object.values(CLI_TOOLS).map((tool) => ({
+    ...tool,
+    available: checkToolAvailability(tool),
+  }));
+  res.json(toolsWithAvailability);
 });
 
-// WebSocket connections
-const connections = new Map(); // ws -> { token, ptyProcess, tool }
+// Check if a CLI tool is available
+function checkToolAvailability(tool) {
+  if (tool.id === "shell") return true;
 
-wss.on("connection", (ws, req) => {
+  const { command } = tool;
+  const pathDirs = [
+    LOCAL_BIN_DIR,
+    NODE_BIN_DIR,
+    ...process.env.PATH.split(path.delimiter),
+  ];
+
+  for (const dir of pathDirs) {
+    const fullPath = path.join(dir, command + (process.platform === "win32" ? ".exe" : ""));
+    try {
+      if (fs.existsSync(fullPath)) {
+        return true;
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  // Special cases for tools that might have different executable names
+  if (command === "github-copilot-cli" || command === "copilot") {
+    return checkForAlternativeCommands(["gh-copilot", "copilot", "github-copilot"]);
+  }
+  if (command === "gemini-cli") {
+    return checkForAlternativeCommands(["gemini", "gcloud"]);
+  }
+  if (command === "opencode") {
+    return checkForAlternativeCommands(["opencode", "oc"]);
+  }
+
+  return false;
+}
+
+function checkForAlternativeCommands(commands) {
+  const pathDirs = [
+    LOCAL_BIN_DIR,
+    NODE_BIN_DIR,
+    ...process.env.PATH.split(path.delimiter),
+  ];
+
+  for (const command of commands) {
+    for (const dir of pathDirs) {
+      const fullPath = path.join(dir, command + (process.platform === "win32" ? ".exe" : ""));
+      try {
+        if (fs.existsSync(fullPath)) {
+          return true;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+  }
+  return false;
+}
+
+// Authentication middleware
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!isValidSession(sessions, token)) {
+    return res.status(401).json({ error: "Invalid or expired session" });
+  }
+
+  next();
+}
+
+// WebSocket handling
+const activeConnections = new Map(); // token -> { ws, ptyProcess }
+
+wss.on("connection", (ws, request) => {
   console.log("New WebSocket connection");
   
-  let ptyProcess = null;
-  let authenticated = false;
-  let currentTool = null;
-
-  ws.on("message", async (data) => {
+  ws.on("message", async (message) => {
     try {
-      const message = JSON.parse(data.toString());
-
-      switch (message.type) {
-        case "auth":
-          const { token } = message;
-          if (isValidSession(sessions, token)) {
-            authenticated = true;
-            connections.set(ws, { token, ptyProcess: null, tool: null });
-            ws.send(JSON.stringify({ type: "auth", success: true }));
-          } else {
-            ws.send(JSON.stringify({ 
-              type: "auth", 
-              success: false, 
-              error: "Invalid session token" 
-            }));
-            ws.close();
-          }
-          break;
-
-        case "launch":
-          if (!authenticated) {
-            ws.send(JSON.stringify({ 
-              type: "error", 
-              error: "Not authenticated" 
-            }));
-            return;
-          }
-
-          const { tool } = message;
-          currentTool = tool;
-          
-          if (ptyProcess) {
-            ptyProcess.kill();
-            ptyProcess = null;
-          }
-
-          const toolConfig = CLI_TOOLS[tool];
-          if (!toolConfig) {
-            ws.send(JSON.stringify({ 
-              type: "error", 
-              error: "Unknown tool" 
-            }));
-            return;
-          }
-
-          if (!toolConfig.available && tool !== "shell") {
-            ws.send(JSON.stringify({ 
-              type: "error", 
-              error: `Tool '${toolConfig.name}' is not installed on this server` 
-            }));
-            return;
-          }
-
-          const env = createEnhancedEnv();
-          
-          try {
-            ptyProcess = pty.spawn(toolConfig.command, toolConfig.args, {
-              name: "xterm-256color",
-              cols: message.cols || 80,
-              rows: message.rows || 24,
-              cwd: WORKSPACE_DIR,
-              env: env,
-              encoding: "utf8"
-            });
-
-            // Update connection info
-            const connInfo = connections.get(ws);
-            if (connInfo) {
-              connInfo.ptyProcess = ptyProcess;
-              connInfo.tool = tool;
-            }
-
-            ptyProcess.onData((data) => {
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: "data", data }));
-              }
-            });
-
-            ptyProcess.onExit((code, signal) => {
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ 
-                  type: "exit", 
-                  code, 
-                  signal,
-                  message: `Process exited with code ${code}` 
-                }));
-              }
-              ptyProcess = null;
-              const connInfo = connections.get(ws);
-              if (connInfo) {
-                connInfo.ptyProcess = null;
-              }
-            });
-
-            ws.send(JSON.stringify({ 
-              type: "launched", 
-              tool: tool,
-              name: toolConfig.name 
-            }));
-
-          } catch (error) {
-            console.error("Error launching tool:", error);
-            ws.send(JSON.stringify({ 
-              type: "error", 
-              error: `Failed to launch ${toolConfig.name}: ${error.message}` 
-            }));
-          }
-          break;
-
-        case "data":
-          if (ptyProcess && authenticated) {
-            ptyProcess.write(message.data);
-          }
-          break;
-
-        case "resize":
-          if (ptyProcess && authenticated) {
-            ptyProcess.resize(message.cols || 80, message.rows || 24);
-          }
-          break;
-
-        case "ping":
-          ws.send(JSON.stringify({ type: "pong" }));
-          break;
-
-        default:
-          console.warn("Unknown message type:", message.type);
+      const data = JSON.parse(message.toString());
+      
+      if (data.type === "auth") {
+        await handleAuthMessage(ws, data);
+      } else if (data.type === "launch") {
+        await handleLaunchMessage(ws, data);
+      } else if (data.type === "data") {
+        handleDataMessage(ws, data);
+      } else if (data.type === "resize") {
+        handleResizeMessage(ws, data);
+      } else if (data.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong" }));
       }
     } catch (error) {
       console.error("WebSocket message error:", error);
       ws.send(JSON.stringify({ 
         type: "error", 
-        error: "Invalid message format" 
+        message: "Invalid message format" 
       }));
     }
   });
 
   ws.on("close", () => {
     console.log("WebSocket connection closed");
-    if (ptyProcess) {
-      ptyProcess.kill();
-      ptyProcess = null;
+    const connection = findConnectionByWs(ws);
+    if (connection) {
+      cleanupConnection(connection);
     }
-    connections.delete(ws);
   });
 
   ws.on("error", (error) => {
     console.error("WebSocket error:", error);
-    if (ptyProcess) {
-      ptyProcess.kill();
-      ptyProcess = null;
+    const connection = findConnectionByWs(ws);
+    if (connection) {
+      cleanupConnection(connection);
     }
-    connections.delete(ws);
   });
-
-  // Send initial ping to establish connection
-  ws.send(JSON.stringify({ type: "ping" }));
 });
 
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("Received SIGTERM, shutting down gracefully");
+async function handleAuthMessage(ws, data) {
+  const { token } = data;
   
-  // Close all WebSocket connections and kill processes
-  for (const [ws, connInfo] of connections.entries()) {
-    if (connInfo.ptyProcess) {
-      connInfo.ptyProcess.kill();
-    }
+  if (!isValidSession(sessions, token)) {
+    ws.send(JSON.stringify({ 
+      type: "auth", 
+      success: false, 
+      error: "Invalid or expired session" 
+    }));
     ws.close();
+    return;
+  }
+
+  // Store the authenticated connection
+  activeConnections.set(token, { ws, ptyProcess: null });
+  
+  ws.send(JSON.stringify({ 
+    type: "auth", 
+    success: true 
+  }));
+}
+
+async function handleLaunchMessage(ws, data) {
+  const { tool } = data;
+  const connection = findConnectionByWs(ws);
+  
+  if (!connection) {
+    ws.send(JSON.stringify({ 
+      type: "error", 
+      message: "Connection not authenticated" 
+    }));
+    return;
+  }
+
+  // Clean up existing process if any
+  if (connection.ptyProcess) {
+    try {
+      connection.ptyProcess.kill();
+    } catch (error) {
+      console.warn("Error killing existing process:", error);
+    }
+  }
+
+  const cliTool = CLI_TOOLS[tool];
+  if (!cliTool) {
+    ws.send(JSON.stringify({ 
+      type: "error", 
+      message: `Unknown tool: ${tool}` 
+    }));
+    return;
+  }
+
+  try {
+    const env = {
+      ...process.env,
+      HOME: CLI_HOME_DIR,
+      CLI_HOME: CLI_HOME_DIR,
+      WORKSPACE_DIR,
+      PATH: [
+        LOCAL_BIN_DIR,
+        NODE_BIN_DIR,
+        process.env.PATH
+      ].join(path.delimiter),
+      TERM: "xterm-256color",
+      COLORTERM: "truecolor"
+    };
+
+    const ptyProcess = pty.spawn(cliTool.command, cliTool.args, {
+      name: "xterm-color",
+      cols: data.cols || 80,
+      rows: data.rows || 24,
+      cwd: WORKSPACE_DIR,
+      env,
+      encoding: "utf8"
+    });
+
+    connection.ptyProcess = ptyProcess;
+
+    ptyProcess.onData((data) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "data", data }));
+      }
+    });
+
+    ptyProcess.onExit(({ exitCode, signal }) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ 
+          type: "exit", 
+          exitCode, 
+          signal 
+        }));
+      }
+      connection.ptyProcess = null;
+    });
+
+    ws.send(JSON.stringify({ 
+      type: "launched", 
+      tool: cliTool.name 
+    }));
+
+  } catch (error) {
+    console.error("Failed to launch tool:", error);
+    ws.send(JSON.stringify({ 
+      type: "error", 
+      message: `Failed to launch ${cliTool.name}: ${error.message}` 
+    }));
+  }
+}
+
+function handleDataMessage(ws, data) {
+  const connection = findConnectionByWs(ws);
+  if (connection && connection.ptyProcess && data.data) {
+    try {
+      connection.ptyProcess.write(data.data);
+    } catch (error) {
+      console.error("Error writing to pty:", error);
+    }
+  }
+}
+
+function handleResizeMessage(ws, data) {
+  const connection = findConnectionByWs(ws);
+  if (connection && connection.ptyProcess && data.cols && data.rows) {
+    try {
+      connection.ptyProcess.resize(data.cols, data.rows);
+    } catch (error) {
+      console.error("Error resizing pty:", error);
+    }
+  }
+}
+
+function findConnectionByWs(ws) {
+  for (const connection of activeConnections.values()) {
+    if (connection.ws === ws) {
+      return connection;
+    }
+  }
+  return null;
+}
+
+function cleanupConnection(connection) {
+  if (connection.ptyProcess) {
+    try {
+      connection.ptyProcess.kill();
+    } catch (error) {
+      console.warn("Error killing process during cleanup:", error);
+    }
   }
   
-  server.close(() => {
-    console.log("Server closed");
-    process.exit(0);
-  });
+  // Remove from activeConnections
+  for (const [token, conn] of activeConnections.entries()) {
+    if (conn === connection) {
+      activeConnections.delete(token);
+      break;
+    }
+  }
+}
+
+// Cleanup on server shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, cleaning up...");
+  for (const connection of activeConnections.values()) {
+    cleanupConnection(connection);
+  }
+  server.close();
 });
 
 process.on("SIGINT", () => {
-  console.log("Received SIGINT, shutting down gracefully");
-  
-  // Close all WebSocket connections and kill processes
-  for (const [ws, connInfo] of connections.entries()) {
-    if (connInfo.ptyProcess) {
-      connInfo.ptyProcess.kill();
-    }
-    ws.close();
+  console.log("SIGINT received, cleaning up...");
+  for (const connection of activeConnections.values()) {
+    cleanupConnection(connection);
   }
-  
-  server.close(() => {
-    console.log("Server closed");
-    process.exit(0);
-  });
+  process.exit(0);
 });
 
 server.listen(PORT, () => {
-  console.log(`Pocket Terminal server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
   console.log(`Password mode: ${PASSWORD_MODE}`);
-  console.log(`Workspace directory: ${WORKSPACE_DIR}`);
-  console.log(`CLI home directory: ${CLI_HOME_DIR}`);
-  
-  // Log available tools
-  const availableTools = Object.values(CLI_TOOLS).filter(t => t.available);
-  console.log(`Available CLI tools: ${availableTools.map(t => t.name).join(", ")}`);
+  console.log(`Workspace: ${WORKSPACE_DIR}`);
+  console.log(`CLI Home: ${CLI_HOME_DIR}`);
 });
