@@ -12,6 +12,7 @@ let connectionStatus = "disconnected";
 window.addEventListener("DOMContentLoaded", () => {
   const loginButton = document.getElementById("login-button");
   const passwordInput = document.getElementById("password-input");
+  const togglePasswordBtn = document.getElementById("toggle-password-visibility");
   const logoutButton = document.getElementById("logout-button");
   const logoutButtonTerminal = document.getElementById("logout-button-terminal");
   const backButton = document.getElementById("back-to-launcher");
@@ -26,6 +27,17 @@ window.addEventListener("DOMContentLoaded", () => {
         handleLogin();
       }
     });
+    if (togglePasswordBtn) {
+      togglePasswordBtn.addEventListener("click", () => {
+        if (passwordInput.type === "password") {
+          passwordInput.type = "text";
+          togglePasswordBtn.textContent = "Hide";
+        } else {
+          passwordInput.type = "password";
+          togglePasswordBtn.textContent = "Show";
+        }
+      });
+    }
   }
   if (logoutButton) {
     logoutButton.addEventListener("click", handleLogout);
@@ -45,6 +57,9 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   initTerminal();
+
+  // Try device-based login (remembered device) before showing login
+  attemptDeviceLogin();
 
   // Handle window resize for terminal fitting
   window.addEventListener("resize", () => {
@@ -93,6 +108,9 @@ function initTerminal() {
     if (fitAddon) {
       setTimeout(() => fitAddon.fit(), 100);
     }
+
+    // allow selection for copy/paste
+    try { container.style.userSelect = 'text'; } catch (e) {}
 
     term.onData((data) => {
       if (ws && ws.readyState === WebSocket.OPEN) {
@@ -173,10 +191,11 @@ async function handleLogin() {
   loginBtn.disabled = true;
 
   try {
+    const remember = document.getElementById("remember-device")?.checked === true;
     const res = await fetch("/auth", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, remember }),
     });
 
     const data = await res.json().catch(() => ({}));
@@ -205,6 +224,24 @@ async function handleLogin() {
   } finally {
     loginBtn.textContent = "Unlock Terminal";
     loginBtn.disabled = false;
+  }
+}
+
+// Attempt to exchange a device cookie for a session without prompting for password
+async function attemptDeviceLogin() {
+  try {
+    const res = await fetch("/auth/device", { method: "POST" });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data && data.success) {
+        document.getElementById("login-screen").classList.add("hidden");
+        document.getElementById("launcher-screen").classList.remove("hidden");
+        await loadToolAvailability();
+        return;
+      }
+    }
+  } catch (e) {
+    // ignore and show login
   }
 }
 
@@ -319,7 +356,8 @@ function connectWebSocket(toolId) {
     if (term && fitAddon) {
       const cols = term.cols || 80;
       const rows = term.rows || 24;
-      ws.send(JSON.stringify({ type: "resize", cols, rows }));
+      // Request server to launch (or reattach) the tool for this session
+      ws.send(JSON.stringify({ type: "launch", tool: toolId || currentTool, cols, rows }));
     }
   };
   
