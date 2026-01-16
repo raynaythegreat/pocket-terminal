@@ -96,7 +96,6 @@ wss.on("connection", (ws, req) => {
   ws.on("error", cleanup);
 });
 
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Pocket Terminal running at http://0.0.0.0:${PORT}`);
-  console.log(`Authentication is DISABLED.`);
+server.listen(PORT, () => {
+  console.log(`Pocket Terminal running at http://localhost:${PORT}`);
 });

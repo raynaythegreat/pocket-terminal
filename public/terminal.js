@@ -85,8 +85,8 @@ function startSession(toolId) {
 
   ws.onclose = () => {
     connectionStatus = "disconnected";
-    // If we intentionally closed it to switch screens, don't show error
-    if (document.getElementById("launcher-screen").classList.contains("hidden")) {
+    // If we are still on the terminal screen, show the banner
+    if (!document.getElementById("terminal-screen").classList.contains("hidden")) {
       updateConnectionBanner(true, "Disconnected. Tap to reconnect.");
     }
   };
