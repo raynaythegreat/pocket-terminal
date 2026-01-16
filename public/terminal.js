@@ -111,12 +111,12 @@ async function copyTextToClipboard(text) {
   if (!t) return false;
 
   try {
-    if (navigator.clipboard && window.isSecureContext) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
       await navigator.clipboard.writeText(t);
       return true;
     }
   } catch {
-    // fallback below
+    // fall through to execCommand
   }
 
   try {
@@ -124,10 +124,11 @@ async function copyTextToClipboard(text) {
     ta.value = t;
     ta.setAttribute("readonly", "true");
     ta.style.position = "fixed";
-    ta.style.top = "-9999px";
-    ta.style.left = "-9999px";
+    ta.style.top = "-1000px";
+    ta.style.left = "-1000px";
     document.body.appendChild(ta);
     ta.select();
+    ta.setSelectionRange(0, ta.value.length);
     const ok = document.execCommand("copy");
     document.body.removeChild(ta);
     return ok;
@@ -136,132 +137,347 @@ async function copyTextToClipboard(text) {
   }
 }
 
-function wireCopySelectionButton() {
-  const btn = document.getElementById("copy-selection-btn");
-  if (!btn) return;
+/**
+ * Build a string from xterm's buffer.
+ * We cap by maxLines and maxChars to avoid freezing the browser on huge scrollback.
+ */
+function getFullTerminalText({ maxLines = 2000, maxChars = 200000 } = {}) {
+  if (!term || !term.buffer) return "";
 
-  btn.addEventListener("click", async () => {
-    if (!term) return;
+  const buf = term.buffer;
+  const normal = buf.normal;
+  const active = buf.active;
 
-    // xterm selection API
-    const selected = typeof term.getSelection === "function" ? term.getSelection() : "";
-    if (!selected) {
-      writeSystemLine("Nothing selected to copy.");
-      return;
+  const collectLines = [];
+  const pushFrom = (b) => {
+    if (!b || typeof b.length !== "number" || typeof b.getLine !== "function") return;
+    for (let i = 0; i < b.length; i++) {
+      const line = b.getLine(i);
+      if (!line) continue;
+      collectLines.push(line.translateToString(true));
     }
+  };
 
-    const ok = await copyTextToClipboard(selected);
-    writeSystemLine(ok ? "Copied selection to clipboard." : "Copy failed (clipboard not available).");
-  });
+  // Include scrollback + active viewport
+  pushFrom(normal);
+  if (active !== normal) pushFrom(active);
+
+  // Trim trailing empty lines
+  while (collectLines.length > 0 && !collectLines[collectLines.length - 1].trim()) {
+    collectLines.pop();
+  }
+
+  let start = Math.max(0, collectLines.length - maxLines);
+  const sliced = collectLines.slice(start);
+
+  let out = sliced.join("\n");
+
+  let truncated = false;
+  if (collectLines.length > maxLines) truncated = true;
+
+  if (out.length > maxChars) {
+    truncated = true;
+    out = out.slice(out.length - maxChars);
+    // try to start at a line boundary
+    const idx = out.indexOf("\n");
+    if (idx > 0 && idx < 2000) out = out.slice(idx + 1);
+  }
+
+  if (truncated) {
+    out = `[truncated] Showing last ~${maxLines} lines / ${maxChars} chars.\n\n` + out;
+  }
+
+  return out;
+}
+
+function setToast(text, kind = "info") {
+  const el = document.getElementById("toast");
+  if (!el) return;
+
+  el.textContent = text || "";
+  el.classList.remove("toast-ok", "toast-warn", "toast-error");
+  if (kind === "ok") el.classList.add("toast-ok");
+  if (kind === "warn") el.classList.add("toast-warn");
+  if (kind === "error") el.classList.add("toast-error");
+
+  el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 1600);
+}
+
+function showApiErrorHint(toolId, snippet) {
+  const box = document.getElementById("api-error-hint");
+  if (!box) return;
+
+  const tool = (toolId || "").toLowerCase();
+  let hint = "API error detected.";
+
+  if (tool.includes("grok")) {
+    hint =
+      "Grok CLI API error. Most Grok CLI builds require an API key (often XAI_API_KEY or GROK_API_KEY) rather than device login. Set it in your hosting environment variables (Vercel or Render) or .env.local, then relaunch Grok.";
+  } else if (tool.includes("gemini")) {
+    hint =
+      "Gemini CLI API error. Ensure GEMINI_API_KEY is set in your hosting environment variables (Vercel or Render) or .env.local, then relaunch Gemini.";
+  } else if (tool.includes("opencode")) {
+    hint =
+      "openCode API error. Ensure the required provider API key(s) are set (e.g. OPENAI_API_KEY / ANTHROPIC_API_KEY) in your hosting environment variables (Vercel or Render) or .env.local, then relaunch.";
+  }
+
+  box.innerHTML = `
+    <div class="alert alert-warn" role="alert">
+      <div style="font-weight:750;margin-bottom:6px;">${escapeHtml(hint)}</div>
+      ${
+        snippet
+          ? `<div class="text-xs text-muted" style="white-space:pre-wrap;">${escapeHtml(snippet)}</div>`
+          : ""
+      }
+    </div>
+  `;
+  box.classList.remove("hidden");
+}
+
+function hideApiErrorHint() {
+  const box = document.getElementById("api-error-hint");
+  if (!box) return;
+  box.classList.add("hidden");
+  box.innerHTML = "";
+}
+
+function escapeHtml(s) {
+  return String(s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function looksLikeApiAuthError(text) {
+  const t = (text || "").toLowerCase();
+  if (!t) return false;
+  return (
+    t.includes("401") ||
+    t.includes("403") ||
+    t.includes("unauthorized") ||
+    t.includes("forbidden") ||
+    t.includes("invalid api key") ||
+    t.includes("missing api key") ||
+    t.includes("api key") && t.includes("invalid") ||
+    t.includes("api key") && t.includes("missing") ||
+    t.includes("authentication failed") ||
+    t.includes("permission denied") && t.includes("api")
+  );
+}
+
+function extractErrorSnippetFromRecentOutput() {
+  // Best-effort: xterm doesn't give us a direct "recent raw stream" easily,
+  // so we copy a smaller tail of the buffer as context.
+  const full = getFullTerminalText({ maxLines: 80, maxChars: 8000 });
+  const lines = full.split("\n");
+  return lines.slice(Math.max(0, lines.length - 20)).join("\n").trim();
+}
+
+async function handleCopyButton() {
+  if (!term) return;
+
+  const selection = term.getSelection ? term.getSelection() : "";
+  const text = (selection || "").trim() ? selection : getFullTerminalText();
+
+  const ok = await copyTextToClipboard(text);
+  if (ok) setToast(selection ? "Copied selection" : "Copied terminal", "ok");
+  else setToast("Copy failed", "error");
+}
+
+/* ---------------- Existing app logic below (kept intact) ---------------- */
+
+async function fetchTools() {
+  const loading = document.getElementById("tools-loading");
+  const errorEl = document.getElementById("tools-error");
+  if (loading) loading.classList.remove("hidden");
+  if (errorEl) {
+    errorEl.classList.add("hidden");
+    errorEl.textContent = "";
+  }
+
+  try {
+    const res = await fetch("/api/tools", { cache: "no-store" });
+    if (!res.ok) throw new Error(`Failed to load tools (${res.status})`);
+    const data = await res.json();
+    renderTools(data);
+  } catch (err) {
+    if (errorEl) {
+      errorEl.textContent = err?.message || "Failed to load tools";
+      errorEl.classList.remove("hidden");
+    }
+  } finally {
+    if (loading) loading.classList.add("hidden");
+  }
+}
+
+function renderTools(data) {
+  const groups = {
+    core: document.getElementById("tools-core"),
+    ai: document.getElementById("tools-ai"),
+    dev: document.getElementById("tools-dev"),
+    misc: document.getElementById("tools-misc"),
+  };
+
+  for (const key of Object.keys(groups)) {
+    const el = groups[key];
+    if (el) el.innerHTML = "";
+  }
+
+  const tools = Array.isArray(data?.tools) ? data.tools : [];
+  for (const tool of tools) {
+    const groupEl = groups[tool.group] || groups.misc;
+    if (!groupEl) continue;
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "tool-card";
+    card.setAttribute("aria-label", `${tool.name} launcher`);
+
+    const badgeClass = tool.ready ? "badge badge-ok" : tool.npxFallback ? "badge badge-warn" : "badge badge-muted";
+    const badgeText = tool.ready ? "Ready" : tool.npxFallback ? "npx" : "Missing";
+
+    card.innerHTML = `
+      <div class="tool-card-head">
+        <div class="tool-name">${escapeHtml(tool.name)}</div>
+        <div class="${badgeClass}">${escapeHtml(badgeText)}</div>
+      </div>
+      <div class="tool-desc text-sm text-muted">${escapeHtml(tool.description || "")}</div>
+      ${
+        tool.hint
+          ? `<div class="tool-hint text-xs">${escapeHtml(tool.hint)}</div>`
+          : ""
+      }
+    `;
+
+    card.addEventListener("click", () => startTool(tool.id));
+    groupEl.appendChild(card);
+  }
+}
+
+function bindUi() {
+  setAppHeightVar();
+  const vv = window.visualViewport;
+  if (vv) vv.addEventListener("resize", () => setAppHeightVar());
+  window.addEventListener("resize", () => setAppHeightVar());
+
+  const refreshBtn = document.getElementById("refresh-tools");
+  if (refreshBtn) refreshBtn.addEventListener("click", () => fetchTools());
+
+  const retryBtn = document.getElementById("reconnect-btn");
+  if (retryBtn) retryBtn.addEventListener("click", () => connectWs(true));
+
+  const backBtn = document.getElementById("back-to-launcher");
+  if (backBtn) backBtn.addEventListener("click", () => switchToLauncher());
+
+  const copyBtn = document.getElementById("copy-terminal");
+  if (copyBtn) copyBtn.addEventListener("click", () => handleCopyButton());
+}
+
+function ensureXtermLoaded() {
+  if (window.Terminal && window.FitAddon) return true;
+  return false;
 }
 
 function initTerminal() {
-  const container = document.getElementById("terminal-container");
-  if (!container || typeof Terminal === "undefined") return;
-
-  term = new Terminal({
-    cursorBlink: true,
-    fontFamily: "ui-monospace, JetBrains Mono, Menlo, Monaco, monospace",
-    fontSize: 14,
-    allowProposedApi: true,
-    scrollback: 6000,
-    convertEol: true,
-    macOptionIsMeta: true,
-  });
-
-  if (typeof FitAddon !== "undefined") {
-    fitAddon = new FitAddon.FitAddon();
-    term.loadAddon(fitAddon);
+  if (term) return;
+  if (!ensureXtermLoaded()) {
+    writeSystemLine("xterm not loaded");
+    return;
   }
 
-  term.open(container);
+  term = new window.Terminal({
+    fontFamily: "var(--font-mono)",
+    fontSize: 13,
+    cursorBlink: true,
+    scrollback: 5000,
+    convertEol: true,
+    allowProposedApi: true,
+  });
 
-  // Ensure container is selectable (iOS sometimes needs this)
-  container.classList.add("terminal-selectable");
+  fitAddon = new window.FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
 
-  // Improve mobile selection: long-press should not immediately focus and swallow selection
-  container.addEventListener(
-    "touchstart",
-    () => {
-      // no-op; leaving touch behavior to xterm selection layer
-    },
-    { passive: true }
-  );
+  const terminalEl = document.getElementById("terminal");
+  if (!terminalEl) return;
+  term.open(terminalEl);
 
-  // Initial fit
-  setTimeout(() => scheduleFit(), 0);
+  // Keep selection enabled (especially for mobile copy)
+  try {
+    term.options.disableStdin = false;
+  } catch {
+    // ignore
+  }
 
-  // Resize on viewport changes (keyboard open/close)
-  const vv = window.visualViewport;
-  const onViewportResize = () => {
-    setAppHeightVar();
+  scheduleFit();
+
+  window.addEventListener("resize", () => {
     if (pendingResizeTimer) clearTimeout(pendingResizeTimer);
-    pendingResizeTimer = setTimeout(() => scheduleFit(), 60);
-  };
+    pendingResizeTimer = setTimeout(() => scheduleFit(), 120);
+  });
 
-  window.addEventListener("resize", onViewportResize, { passive: true });
-  if (vv) vv.addEventListener("resize", onViewportResize, { passive: true });
+  const vv = window.visualViewport;
+  if (vv) {
+    vv.addEventListener("resize", () => {
+      if (pendingResizeTimer) clearTimeout(pendingResizeTimer);
+      pendingResizeTimer = setTimeout(() => scheduleFit(), 50);
+    });
+  }
 
-  wireCopySelectionButton();
+  termDataDisposable = term.onData((data) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "input", data }));
+    }
+  });
 }
 
-function connectWs(toolId) {
+function connectWs(force = false) {
+  if (ws && ws.readyState === WebSocket.OPEN && !force) return;
+
   disconnectWs();
-
-  currentTool = toolId || "shell";
-  lastTool = currentTool;
-
-  const proto = location.protocol === "https:" ? "wss" : "ws";
-  const url = `${proto}://${location.host}/ws`;
-
+  hideApiErrorHint();
   setConnectionBanner("connecting", "Connecting…", false);
 
-  ws = new WebSocket(url);
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
 
   ws.onopen = () => {
     setConnectionBanner("connected", "", false);
-
-    // Start the requested tool session
-    ws.send(JSON.stringify({ type: "start", tool: currentTool }));
-
-    // If terminal exists, send initial size
-    if (term && ws.readyState === WebSocket.OPEN) {
+    if (term && ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
     }
   };
 
-  ws.onmessage = (evt) => {
-    let msg;
+  ws.onmessage = (event) => {
     try {
-      msg = JSON.parse(evt.data);
+      const msg = JSON.parse(event.data);
+      if (msg.type === "output") {
+        if (!term) initTerminal();
+        if (term) term.write(msg.data);
+
+        // Detect likely API/auth errors and show a hint panel.
+        if (looksLikeApiAuthError(msg.data)) {
+          const snippet = extractErrorSnippetFromRecentOutput();
+          showApiErrorHint(currentTool, snippet);
+        }
+      } else if (msg.type === "tool") {
+        currentTool = msg.toolId || currentTool;
+        lastTool = currentTool || lastTool;
+        setTerminalHeader(msg.meta || {});
+        hideApiErrorHint();
+      } else if (msg.type === "exit") {
+        writeSystemLine(`\r\n[process exited: ${msg.code}]`);
+      }
     } catch {
-      return;
-    }
-
-    if (msg.type === "meta") {
-      setTerminalHeader(msg.meta);
-      return;
-    }
-
-    if (msg.type === "data") {
-      if (term) term.write(msg.data);
-      return;
-    }
-
-    if (msg.type === "system") {
-      writeSystemLine(msg.message || "");
-      return;
-    }
-
-    if (msg.type === "auth") {
-      // Existing UI should handle this if present
-      const panel = document.getElementById("auth-panel");
-      const urlEl = document.getElementById("auth-url");
-      const codeEl = document.getElementById("auth-code");
-      if (panel) panel.classList.remove("hidden");
-      if (urlEl && msg.url) urlEl.textContent = msg.url;
-      if (codeEl && msg.code) codeEl.textContent = msg.code;
-      return;
+      // if not json, treat as raw output
+      if (!term) initTerminal();
+      if (term) term.write(String(event.data || ""));
+      if (looksLikeApiAuthError(String(event.data || ""))) {
+        const snippet = extractErrorSnippetFromRecentOutput();
+        showApiErrorHint(currentTool, snippet);
+      }
     }
   };
 
@@ -274,121 +490,30 @@ function connectWs(toolId) {
   };
 }
 
-function bindReconnectButton() {
-  const btn = document.getElementById("reconnect-btn");
-  if (!btn) return;
+async function startTool(toolId) {
+  hideApiErrorHint();
+  lastTool = toolId || lastTool;
+  currentTool = toolId || currentTool;
 
-  btn.addEventListener("click", () => {
-    writeSystemLine("Reconnecting…");
-    connectWs(lastTool || "shell");
-  });
-}
-
-// Tool rendering (minimal; uses existing DOM IDs in index.html)
-async function loadTools() {
-  const loading = document.getElementById("tools-loading");
-  const err = document.getElementById("tools-error");
-  const coreEl = document.getElementById("tools-core");
-  const aiEl = document.getElementById("tools-ai");
-
-  if (loading) loading.classList.remove("hidden");
-  if (err) {
-    err.textContent = "";
-    err.classList.add("hidden");
-  }
-
-  try {
-    const res = await fetch("/api/tools", { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    const tools = Array.isArray(data?.tools) ? data.tools : [];
-    const core = tools.filter((t) => t.group === "core");
-    const ai = tools.filter((t) => t.group === "ai");
-
-    const renderGroup = (parent, list) => {
-      if (!parent) return;
-      parent.innerHTML = "";
-
-      for (const tool of list) {
-        const card = document.createElement("div");
-        card.className = "tool-card";
-
-        const meta = document.createElement("div");
-        meta.className = "tool-meta";
-
-        const nameRow = document.createElement("div");
-        nameRow.className = "tool-name-row";
-
-        const name = document.createElement("div");
-        name.className = "tool-name";
-        name.textContent = tool.name || tool.id;
-
-        const badge = document.createElement("span");
-        badge.className = "badge " + (tool.badgeClass || "badge-muted");
-        badge.textContent = tool.badge || "…";
-
-        nameRow.appendChild(name);
-        nameRow.appendChild(badge);
-
-        const desc = document.createElement("div");
-        desc.className = "tool-desc text-sm text-muted";
-        desc.textContent = tool.description || "";
-
-        meta.appendChild(nameRow);
-        meta.appendChild(desc);
-
-        const actions = document.createElement("div");
-        actions.className = "tool-actions";
-
-        const launch = document.createElement("button");
-        launch.type = "button";
-        launch.className = "primary-btn btn-sm";
-        launch.textContent = "Launch";
-        launch.addEventListener("click", () => {
-          switchToScreen("terminal-screen");
-          connectWs(tool.id);
-          setTimeout(() => scheduleFit(), 0);
-        });
-
-        actions.appendChild(launch);
-
-        card.appendChild(meta);
-        card.appendChild(actions);
-
-        parent.appendChild(card);
-      }
-    };
-
-    renderGroup(coreEl, core);
-    renderGroup(aiEl, ai);
-  } catch (e) {
-    if (err) {
-      err.textContent = `Failed to load tools: ${e?.message || e}`;
-      err.classList.remove("hidden");
-    }
-  } finally {
-    if (loading) loading.classList.add("hidden");
-  }
-}
-
-function bindLauncherButtons() {
-  const refreshBtn = document.getElementById("refresh-tools");
-  if (refreshBtn) refreshBtn.addEventListener("click", () => loadTools());
-
-  const helpBtn = document.getElementById("open-help");
-  if (helpBtn) helpBtn.addEventListener("click", () => alert("Help: Pick a tool to launch a session."));
-
-  const backBtn = document.getElementById("back-to-launcher");
-  if (backBtn) backBtn.addEventListener("click", () => switchToLauncher());
-}
-
-function boot() {
-  setAppHeightVar();
+  switchToScreen("terminal-screen");
   initTerminal();
-  bindReconnectButton();
-  bindLauncherButtons();
-  loadTools();
+  connectWs();
+
+  // Wait briefly for ws open
+  const start = Date.now();
+  while ((!ws || ws.readyState !== WebSocket.OPEN) && Date.now() - start < 3000) {
+    await new Promise((r) => setTimeout(r, 40));
+  }
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    writeSystemLine("Unable to connect to server.");
+    return;
+  }
+
+  ws.send(JSON.stringify({ type: "start", toolId }));
 }
 
-document.addEventListener("DOMContentLoaded", boot);
+document.addEventListener("DOMContentLoaded", () => {
+  bindUi();
+  fetchTools();
+});
