@@ -6,7 +6,8 @@ Web-based terminal + AI CLI launchers, designed to be usable from a phone.
 
 1. `cp .env.example .env` (optional)
 2. `npm ci`
-3. `npm start`
+3. `./build.sh`
+4. `npm start`
 
 Open `http://localhost:3000`, then use **Quick Launch**.
 
@@ -15,43 +16,21 @@ Open `http://localhost:3000`, then use **Quick Launch**.
 - Projects are stored in `WORKSPACE_DIR` (default: `./workspace/projects`)
 - CLI config/history uses `CLI_HOME_DIR` (default: `./workspace/cli-home`)
   - This app stores per-tool HOME directories under `CLI_HOME_DIR/tools/<toolId>`
-  - This prevents auth/config collisions and keeps logins persistent across sessions
+  - This prevents auth/config collisions and keeps logins persistent across sessions.
 
 ## Tool availability
 
 The launcher shows which tools are **Ready** (installed and detected) vs install hints.
 
 - Tools are resolved from:
-  - repo scripts (e.g. `./opencode` if present and executable)
-  - `./bin` (created by `./build.sh`)
+  - repo scripts (e.g. `./opencode`)
+  - `./bin` (populated by `./build.sh`)
   - `./node_modules/.bin`
-  - System PATH (if installed in your OS image)
-  - `npx -y <pkg>` fallback for some tools
+  - System PATH
 
-## Optional CLIs (openCode, Kimi, etc.)
+## Google Account Login (Gemini CLI)
 
-Run `./build.sh` to install optional tools into `./bin` (and Kimi into `./kimi-cli-deps` when Python is available).
+On Render/headless servers, you must use the "no-browser" login flow. 
 
-## Headless authentication (Copilot + others)
-
-On Render/headless servers, CLIs cannot open a browser for OAuth automatically.
-
-Pocket Terminal detects common auth URLs/device codes printed by CLIs and shows an **Authentication panel** with:
-- URL (open/copy)
-- code (copy)
-
-Complete login on your phone/device, then return to the terminal session.
-
-## Secrets / API keys
-
-Set secrets in your hosting environment variables (Vercel or Render) or `.env.local`:
-
-- Claude Code: `ANTHROPIC_API_KEY`
-- Gemini: `GEMINI_API_KEY`
-- OpenAI/Codex: `OPENAI_API_KEY`
-
-## Render
-
-`render.yaml` uses `/healthz` for health checks and mounts a persistent disk for `WORKSPACE_DIR` and `CLI_HOME_DIR`.
-
-To make more CLIs available on Render, ensure your Render build step installs them (or run `./build.sh` during build).
+1. Launch **Gemini CLI** (or the standard **Terminal**) from the launcher.
+2. Run the following command:

@@ -3,12 +3,17 @@ services:
     name: pocket-terminal
     env: node
     plan: free
-    healthCheckPath: /healthz
-    buildCommand: bash ./build.sh
+    buildCommand: ./build.sh
     startCommand: npm start
+    healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
-        value: 22.0.0
-      - key: TERMINAL_PASSWORD
-        sync: false
-        description: "The password used to unlock the web terminal"
+        value: 22.x
+      - key: CLI_HOME_DIR
+        value: /var/data/cli-home
+      - key: WORKSPACE_DIR
+        value: /var/data/projects
+    disk:
+      name: terminal-data
+      mountPath: /var/data
+      sizeGB: 1
