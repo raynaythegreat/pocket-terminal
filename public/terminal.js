@@ -3,6 +3,8 @@ let term = null;
 let fitAddon = null;
 let currentTool = "shell";
 let connectionStatus = "disconnected";
+let lastTool = "shell";
+let termDataDisposable = null;
 
 function setAppHeightVar() {
   // Use visualViewport height when available (best for mobile keyboard + URL bar)
@@ -14,14 +16,13 @@ function setAppHeightVar() {
 function scheduleFit() {
   if (!term || !fitAddon) return;
 
-  // Fit after layout settles + after potential safe-area/viewport updates
   requestAnimationFrame(() => {
     try {
       fitAddon.fit();
     } catch {
       // ignore fit errors
     }
-    // A second fit shortly after helps on iOS after address bar/keyboard transitions
+
     setTimeout(() => {
       try {
         fitAddon.fit();
@@ -35,50 +36,60 @@ function scheduleFit() {
   });
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  const backButton = document.getElementById("back-to-launcher");
-  const clearButton = document.getElementById("clear-terminal");
-  const reconnectBtn = document.getElementById("reconnect-btn");
+function switchToScreen(id) {
+  const launcher = document.getElementById("launcher-screen");
+  const terminalScreen = document.getElementById("terminal-screen");
+  if (!launcher || !terminalScreen) return;
 
-  if (backButton) backButton.addEventListener("click", switchToLauncher);
-  if (clearButton) clearButton.addEventListener("click", () => term && term.clear());
+  launcher.classList.toggle("hidden", id !== "launcher-screen");
+  terminalScreen.classList.toggle("hidden", id !== "terminal-screen");
 
-  if (reconnectBtn) {
-    reconnectBtn.addEventListener("click", () => {
-      if (!currentTool) currentTool = "shell";
-      startSession(currentTool);
-    });
+  // Re-fit after screen visibility changes
+  if (id === "terminal-screen") {
+    setTimeout(() => scheduleFit(), 0);
   }
+}
 
-  setAppHeightVar();
-  initTerminal();
-
-  // Ensure we always start on the launcher (no auth/login screen)
+function switchToLauncher() {
   switchToScreen("launcher-screen");
+  // Do not automatically kill sessions when going back; user can retry or open new.
+}
 
-  // Window resize (desktop + mobile rotate)
-  window.addEventListener("resize", () => {
-    setAppHeightVar();
-    scheduleFit();
-  });
+function setConnectionBanner(state, text, showRetry) {
+  const banner = document.getElementById("connection-status");
+  const textEl = document.getElementById("connection-text");
+  const retryBtn = document.getElementById("reconnect-btn");
 
-  // Mobile keyboard / URL bar changes
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", () => {
-      setAppHeightVar();
-      scheduleFit();
-    });
-    window.visualViewport.addEventListener("scroll", () => {
-      // Some iOS versions change viewport on scroll; keep height updated
-      setAppHeightVar();
-    });
+  if (!banner || !textEl || !retryBtn) return;
+
+  connectionStatus = state;
+  textEl.textContent = text || "";
+
+  const shouldShow = state !== "connected";
+  banner.classList.toggle("hidden", !shouldShow);
+
+  retryBtn.classList.toggle("hidden", !showRetry);
+}
+
+function disconnectWs() {
+  if (ws) {
+    try {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close();
+    } catch {
+      // ignore
+    }
   }
+  ws = null;
+}
 
-  // Fit when fonts are ready (prevents off-by-one sizing that hides last row)
-  if (document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(() => scheduleFit()).catch(() => {});
-  }
-});
+function writeSystemLine(line) {
+  if (!term) return;
+  term.writeln(`\r\n\x1b[90m${line}\x1b[0m`);
+}
 
 function initTerminal() {
   const container = document.getElementById("terminal-container");
@@ -100,101 +111,156 @@ function initTerminal() {
 
   fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
-  term.open(container);
 
+  term.open(container);
   scheduleFit();
 
-  term.onData((data) => {
+  // Ensure we don't double-bind input handler across reconnects
+  if (termDataDisposable) {
+    try {
+      termDataDisposable.dispose();
+    } catch {
+      // ignore
+    }
+    termDataDisposable = null;
+  }
+
+  termDataDisposable = term.onData((data) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "input", content: data }));
+      ws.send(JSON.stringify({ type: "input", data }));
     }
   });
 }
 
-function startSession(toolId) {
-  currentTool = toolId;
-  const activeToolName = document.getElementById("active-tool-name");
-  if (activeToolName) activeToolName.textContent = String(toolId).toUpperCase();
+function updateTerminalTitle(tool) {
+  const title = document.getElementById("terminal-title");
+  const subtitle = document.getElementById("terminal-subtitle");
+  if (!title || !subtitle) return;
 
+  const map = {
+    shell: ["Shell", "Interactive shell"],
+    gh: ["GitHub CLI", "Run gh commands (auth may be required)"],
+    copilot: ["Copilot", "GitHub Copilot CLI"],
+    gemini: ["Gemini", "Google Gemini CLI"],
+    claude: ["Claude Code", "Anthropic CLI"],
+    codex: ["Codex", "OpenAI Codex CLI"],
+    grok: ["Grok", "Grok CLI"],
+    cline: ["Cline", "Kilo/Cline CLI"],
+    opencode: ["OpenCode", "AI coding agent"],
+  };
+
+  const entry = map[tool] || ["Terminal", ""];
+  title.textContent = entry[0];
+  subtitle.textContent = entry[1];
+}
+
+function startSession(tool) {
+  if (!tool) tool = "shell";
+
+  // Always start a fresh session
+  disconnectWs();
+
+  currentTool = tool;
+  lastTool = tool;
+
+  updateTerminalTitle(tool);
   switchToScreen("terminal-screen");
-  setAppHeightVar();
-  scheduleFit();
 
-  if (ws) ws.close();
-
-  // If terminal isn't ready for some reason, fail gracefully.
   if (!term) {
-    updateConnectionBanner(true, "Terminal failed to initialize.");
-    return;
+    initTerminal();
+  } else {
+    // Clear banner and fit when reusing existing terminal instance
+    scheduleFit();
   }
 
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${window.location.host}/ws?tool=${encodeURIComponent(
-    toolId
-  )}&cols=${term.cols}&rows=${term.rows}`;
+  // Create WS
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  const wsUrl = `${proto}://${window.location.host}/ws?tool=${encodeURIComponent(tool)}`;
+
+  setConnectionBanner("connecting", "Connecting...", false);
 
   ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
-    connectionStatus = "connected";
-    term.clear();
-    term.focus();
-    updateConnectionBanner(false);
+    setConnectionBanner("connected", "", false);
+    // Fit and send resize to server
     scheduleFit();
+    setTimeout(() => {
+      if (ws && ws.readyState === WebSocket.OPEN && term) {
+        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      }
+    }, 120);
   };
 
-  ws.onmessage = (event) => {
-    term.write(event.data);
-  };
+  ws.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (!term) return;
 
-  ws.onclose = () => {
-    connectionStatus = "disconnected";
-    // If we are still on the terminal screen, show the banner
-    const terminalScreen = document.getElementById("terminal-screen");
-    if (terminalScreen && !terminalScreen.classList.contains("hidden")) {
-      updateConnectionBanner(true, "Disconnected. Tap Retry to reconnect.");
+      if (msg.type === "output" && typeof msg.data === "string") {
+        term.write(msg.data);
+      } else if (msg.type === "system" && typeof msg.data === "string") {
+        writeSystemLine(msg.data);
+      } else if (msg.type === "error" && typeof msg.data === "string") {
+        writeSystemLine(`Error: ${msg.data}`);
+      }
+    } catch {
+      // If not JSON, treat as raw output
+      if (term && typeof ev.data === "string") term.write(ev.data);
     }
   };
 
   ws.onerror = () => {
-    connectionStatus = "disconnected";
-    updateConnectionBanner(true, "Connection error. Tap Retry to reconnect.");
+    setConnectionBanner("disconnected", "Connection error.", true);
+    writeSystemLine("Connection error. Tap Retry to reconnect.");
+  };
+
+  ws.onclose = () => {
+    setConnectionBanner("disconnected", "Disconnected.", true);
+    writeSystemLine("Disconnected. Tap Retry to reconnect.");
   };
 }
 
-/* UI helpers (existing behavior) */
-function switchToLauncher() {
-  if (ws) ws.close();
-  switchToScreen("launcher-screen");
-}
-
-function switchToScreen(screenId) {
-  const screens = document.querySelectorAll(".screen");
-  screens.forEach((s) => s.classList.add("hidden"));
-
-  const target = document.getElementById(screenId);
-  if (target) target.classList.remove("hidden");
-
-  // When switching to terminal, update height and fit to avoid off-screen rows.
-  if (screenId === "terminal-screen") {
-    setAppHeightVar();
-    scheduleFit();
-  }
-}
-
-function updateConnectionBanner(show, text) {
-  const banner = document.getElementById("connection-status");
-  const textEl = document.getElementById("connection-text");
+window.addEventListener("DOMContentLoaded", () => {
+  const backButton = document.getElementById("back-to-launcher");
+  const clearButton = document.getElementById("clear-terminal");
   const reconnectBtn = document.getElementById("reconnect-btn");
 
-  if (!banner) return;
+  if (backButton) backButton.addEventListener("click", switchToLauncher);
+  if (clearButton) clearButton.addEventListener("click", () => term && term.clear());
 
-  if (show) {
-    banner.classList.remove("hidden");
-    if (textEl && typeof text === "string") textEl.textContent = text;
-    if (reconnectBtn) reconnectBtn.classList.remove("hidden");
-  } else {
-    banner.classList.add("hidden");
-    if (reconnectBtn) reconnectBtn.classList.add("hidden");
+  if (reconnectBtn) {
+    reconnectBtn.addEventListener("click", () => {
+      const tool = lastTool || currentTool || "shell";
+      startSession(tool);
+    });
   }
-}
+
+  setAppHeightVar();
+  initTerminal();
+
+  // Ensure we always start on the launcher
+  switchToScreen("launcher-screen");
+
+  window.addEventListener("resize", () => {
+    setAppHeightVar();
+    scheduleFit();
+  });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      setAppHeightVar();
+      scheduleFit();
+    });
+    window.visualViewport.addEventListener("scroll", () => {
+      setAppHeightVar();
+    });
+  }
+
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => scheduleFit()).catch(() => {});
+  }
+});
+
+// Expose for inline onclick handlers
+window.startSession = startSession;

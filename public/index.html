@@ -19,9 +19,7 @@
     <div id="connection-status" class="connection-banner hidden" role="status" aria-live="polite">
       <div class="connection-content">
         <span id="connection-text">Connecting...</span>
-        <button id="reconnect-btn" class="reconnect-btn hidden" type="button">
-          Retry
-        </button>
+        <button id="reconnect-btn" class="reconnect-btn hidden" type="button">Retry</button>
       </div>
     </div>
 
@@ -74,7 +72,7 @@
               <div class="tool-icon">🧠</div>
               <div class="tool-info">
                 <span class="tool-name">Claude Code</span>
-                <span class="tool-desc">Anthropic coding agent</span>
+                <span class="tool-desc">Anthropic CLI</span>
               </div>
             </button>
 
@@ -98,7 +96,15 @@
               <div class="tool-icon">🛠️</div>
               <div class="tool-info">
                 <span class="tool-name">Cline</span>
-                <span class="tool-desc">Cline CLI</span>
+                <span class="tool-desc">Kilo/Cline CLI</span>
+              </div>
+            </button>
+
+            <button class="tool-card" onclick="startSession('opencode')" type="button">
+              <div class="tool-icon">🧱</div>
+              <div class="tool-info">
+                <span class="tool-name">OpenCode</span>
+                <span class="tool-desc">AI coding agent</span>
               </div>
             </button>
           </div>
@@ -108,26 +114,16 @@
 
     <!-- Terminal Screen -->
     <div id="terminal-screen" class="screen hidden">
-      <header class="terminal-top-bar">
-        <div class="terminal-top-bar-left">
-          <button id="back-to-launcher" class="icon-btn" type="button" aria-label="Back">
-            ←
-          </button>
-          <div class="terminal-title">
-            <h2 id="active-tool-name">SHELL</h2>
-            <p class="text-xs">Tap terminal to type. Rotate/keyboard will resize.</p>
-          </div>
+      <header class="terminal-header">
+        <button id="back-to-launcher" class="secondary-btn btn-sm" type="button">Back</button>
+        <div class="terminal-title-wrap">
+          <span id="terminal-title" class="terminal-title">Terminal</span>
+          <span id="terminal-subtitle" class="terminal-subtitle text-xs text-muted"></span>
         </div>
-        <div class="terminal-actions">
-          <button id="clear-terminal" class="secondary-btn btn-sm" type="button">
-            Clear
-          </button>
-        </div>
+        <button id="clear-terminal" class="secondary-btn btn-sm" type="button">Clear</button>
       </header>
 
-      <div class="terminal-body">
-        <div id="terminal-container" aria-label="Terminal"></div>
-      </div>
+      <div id="terminal-container" class="terminal-container" aria-label="Terminal"></div>
     </div>
 
     <!-- XTerm.js -->

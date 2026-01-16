@@ -37,51 +37,66 @@ function isExecutableFile(p) {
   try {
     const st = fs.statSync(p);
     if (!st.isFile()) return false;
-    // On Windows, "executable" isn't meaningful; presence is enough.
     if (process.platform === "win32") return true;
-    // Basic executable bit check
     return (st.mode & 0o111) !== 0;
   } catch {
     return false;
   }
 }
 
+function firstExistingExecutable(candidates) {
+  for (reflect of candidates) {
+    // noop (placeholder to avoid lint) - will be overwritten below
+  }
+  for (const candidate of candidates) {
+    if (isExecutableFile(candidate)) return candidate;
+  }
+  return null;
+}
+
+function resolveLocalBin(bin) {
+  const candidates = [
+    path.join(LOCAL_BIN_DIR, bin),
+    path.join(NODE_MODULES_BIN_DIR, bin),
+  ];
+
+  if (process.platform === "win32") {
+    const exts = [".cmd", ".exe", ".bat"];
+    const bases = [path.join(LOCAL_BIN_DIR, bin), path.join(NODE_MODULES_BIN_DIR, bin)];
+    for (const base of bases) for (const ext of exts) candidates.push(base + ext);
+  }
+
+  return firstExistingExecutable(candidates);
+}
+
 /**
  * Resolve a command to spawn.
- * - Prefer a direct binary (found via PATH at runtime / node-pty spawn),
- *   but we can also point to known local paths (./bin, node_modules/.bin).
- * - If not available, fall back to: npx -y <packageName>
+ * - Prefer local bin in ./bin or node_modules/.bin
+ * - Else use a plain command name (may exist in PATH)
+ * - Else (if provided) fallback to: npx -y <packageName>
  *
- * @param {{bin?: string, packageName?: string}} spec
+ * @param {{bin?: string, packageName?: string, preferRepoScript?: string}} spec
  * @returns {{command: string, args: string[]}}
  */
 function resolveCommand(spec) {
   const bin = spec.bin;
   const packageName = spec.packageName;
+  const preferRepoScript = spec.preferRepoScript;
 
-  // Prefer explicit bin if available from our known local dirs.
+  // Prefer a repo script if requested (e.g. ./opencode)
+  if (preferRepoScript) {
+    const p = path.resolve(__dirname, preferRepoScript);
+    if (isExecutableFile(p)) return { command: p, args: [] };
+    // If it's a file but not executable, try via node
+    if (fs.existsSync(p) && fs.statSync(p).isFile()) {
+      return { command: process.execPath, args: [p] };
+    }
+  }
+
   if (bin) {
-    const candidates = [
-      path.join(LOCAL_BIN_DIR, bin),
-      path.join(NODE_MODULES_BIN_DIR, bin),
-    ];
-
-    // Add Windows extensions to candidates.
-    if (process.platform === "win32") {
-      const winExts = [".cmd", ".exe", ".bat"];
-      for (const base of [path.join(LOCAL_BIN_DIR, bin), path.join(NODE_MODULES_BIN_DIR, bin)]) {
-        for (const ext of winExts) candidates.push(base + ext);
-      }
-    }
-
-    for (const candidate of candidates) {
-      if (isExecutableFile(candidate)) {
-        return { command: candidate, args: [] };
-      }
-    }
-
-    // If not found in explicit local locations, still try by name
-    // (it may exist in PATH in the host).
+    const local = resolveLocalBin(bin);
+    if (local) return { command: local, args: [] };
+    // try by name (PATH)
     return { command: bin, args: [] };
   }
 
@@ -89,11 +104,47 @@ function resolveCommand(spec) {
     return { command: "npx", args: ["-y", packageName] };
   }
 
-  // Ultimate fallback: shell
   return {
     command: process.platform === "win32" ? "cmd.exe" : "bash",
     args: [],
   };
+}
+
+function resolveWithNpxFallback({ bin, packageName, preferRepoScript }) {
+  // Try local/path bin first; if that fails at runtime we'll fallback by spawning npx.
+  // Here we choose a "best guess" command. Runtime fallback is handled by shell wrapper below.
+  if (preferRepoScript) {
+    const p = path.resolve(__dirname, preferRepoScript);
+    if (isExecutableFile(p) || fs.existsSync(p)) {
+      return resolveCommand({ preferRepoScript });
+    }
+  }
+
+  const local = bin ? resolveLocalBin(bin) : null;
+  if (local) return { command: local, args: [], fallback: packageName ? { command: "npx", args: ["-y", packageName] } : null };
+
+  if (bin) return { command: bin, args: [], fallback: packageName ? { command: "npx", args: ["-y", packageName] } : null };
+
+  if (packageName) return { command: "npx", args: ["-y", packageName], fallback: null };
+
+  return { command: process.platform === "win32" ? "cmd.exe" : "bash", args: [], fallback: null };
+}
+
+function shellWrap(command, args) {
+  // On unix, run via login shell for consistent PATH/rc files
+  if (process.platform !== "win32") {
+    const joined = [command, ...args].map((s) => {
+      // basic shell escaping
+      if (/^[a-zA-Z0-9_./:-]+$/.test(s)) return s;
+      return `'${String(s).replace(/'/g, `'\\''`)}'`;
+    }).join(" ");
+
+    // Use "command -v" to check existence; if missing, attempt npx when original is a bare name.
+    return { command: "bash", args: ["-lc", joined] };
+  }
+
+  // On Windows, just run directly (cmd.exe can be added later if needed)
+  return { command, args };
 }
 
 const TOOL_CONFIG = {
@@ -105,134 +156,205 @@ const TOOL_CONFIG = {
       args: [],
     }),
   },
+
   gh: {
     id: "gh",
     title: "GitHub CLI",
-    resolve: () => resolveCommand({ bin: "gh" }),
+    resolve: () => {
+      // Prefer gh binary; fallback to npx if not present.
+      const r = resolveWithNpxFallback({ bin: "gh", packageName: null });
+      // For stability, start an interactive shell and print guidance + keep it open.
+      if (process.platform !== "win32") {
+        const script = [
+          "echo 'GitHub CLI session.'",
+          "echo 'Tip: run: gh auth login'",
+          "echo 'Then use gh commands (e.g., gh repo view).'",
+          "echo ''",
+          "exec bash -i",
+        ].join("\n");
+        return { command: "bash", args: ["-lc", script] };
+      }
+      return r;
+    },
   },
+
   copilot: {
     id: "copilot",
     title: "Copilot",
-    resolve: () => resolveCommand({ bin: "github-copilot-cli", packageName: "@github/copilot" }),
+    resolve: () => resolveWithNpxFallback({ bin: "copilot", packageName: "@github/copilot" }),
   },
+
   gemini: {
     id: "gemini",
     title: "Gemini",
-    resolve: () => resolveCommand({ bin: "gemini-cli", packageName: "@google/gemini-cli" }),
-  },
-  opencode: {
-    id: "opencode",
-    title: "opencode",
-    resolve: () => resolveCommand({ bin: "opencode", packageName: "@openai/opencode" }),
-  },
-  kimi: {
-    id: "kimi",
-    title: "kimi",
-    resolve: () => resolveCommand({ bin: "kimi", packageName: "@kilocode/cli" }),
+    resolve: () => resolveWithNpxFallback({ bin: "gemini", packageName: "@google/gemini-cli" }),
   },
 
-  // Newly added tools
   claude: {
     id: "claude",
     title: "Claude Code",
-    // Common bin names are "claude" / "claude-code". We'll prefer "claude" but
-    // if users installed differently, npx fallback still works.
-    resolve: () => resolveCommand({ bin: "claude", packageName: "@anthropic-ai/claude-code" }),
+    resolve: () => resolveWithNpxFallback({ bin: "claude", packageName: "@anthropic-ai/claude-code" }),
   },
+
   codex: {
     id: "codex",
     title: "Codex",
-    resolve: () => resolveCommand({ bin: "codex", packageName: "@openai/codex" }),
+    resolve: () => resolveWithNpxFallback({ bin: "codex", packageName: "@openai/codex" }),
   },
+
   grok: {
     id: "grok",
     title: "Grok",
-    // Some distributions may expose "grok" or "grok-cli"; we use "grok" and npx fallback.
-    resolve: () => resolveCommand({ bin: "grok", packageName: "@vibe-kit/grok-cli" }),
+    resolve: () => resolveWithNpxFallback({ bin: "grok", packageName: "@vibe-kit/grok-cli" }),
   },
+
   cline: {
     id: "cline",
     title: "Cline",
-    // KiloCode historically uses "kilo"/"kilocode" in some setups; we assume "cline" and npx fallback.
-    resolve: () => resolveCommand({ bin: "cline", packageName: "@kilocode/cli" }),
+    resolve: () => resolveWithNpxFallback({ bin: "cline", packageName: "@kilocode/cli" }),
+  },
+
+  opencode: {
+    id: "opencode",
+    title: "OpenCode",
+    resolve: () =>
+      resolveWithNpxFallback({
+        preferRepoScript: "./opencode",
+        bin: "opencode",
+        packageName: "opencode",
+      }),
   },
 };
 
-// Health check endpoint
-app.get("/healthz", (req, res) => res.status(200).send("OK"));
+function getToolFromReq(req) {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const tool = url.searchParams.get("tool") || "shell";
+    if (TOOL_CONFIG[tool]) return tool;
+    return "shell";
+  } catch {
+    return "shell";
+  }
+}
 
-// WebSocket Handling
-wss.on("connection", (ws, req) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const toolId = url.searchParams.get("tool") || "shell";
-  const tool = TOOL_CONFIG[toolId] || TOOL_CONFIG.shell;
+function buildPtyEnv() {
+  const base = { ...process.env };
 
-  const cols = parseInt(url.searchParams.get("cols"), 10) || 80;
-  const rows = parseInt(url.searchParams.get("rows"), 10) || 24;
+  // Strongly prefer our local bins in PATH
+  const sep = process.platform === "win32" ? ";" : ":";
+  const existing = base.PATH || base.Path || "";
+  const extra = [LOCAL_BIN_DIR, NODE_MODULES_BIN_DIR].join(sep);
+  base.PATH = extra + (existing ? sep + existing : "");
 
-  const resolved = typeof tool.resolve === "function" ? tool.resolve() : resolveCommand({ bin: tool.command });
+  base.HOME = CLI_HOME_DIR;
+  base.USERPROFILE = CLI_HOME_DIR;
 
-  const env = {
-    ...process.env,
-    HOME: CLI_HOME_DIR,
-    // Ensure our local bins and node_modules/.bin are first in PATH so optionalDependencies work.
-    PATH: `${LOCAL_BIN_DIR}${path.delimiter}${NODE_MODULES_BIN_DIR}${path.delimiter}${process.env.PATH || ""}`,
-    TERM: "xterm-256color",
-    COLORTERM: "truecolor",
-  };
+  return base;
+}
 
-  const ptyProcess = pty.spawn(resolved.command, resolved.args || [], {
-    name: "xterm-color",
-    cols,
-    rows,
+wss.on("connection", (socket, req) => {
+  const tool = getToolFromReq(req);
+  const cfg = TOOL_CONFIG[tool] || TOOL_CONFIG.shell;
+
+  const resolved = cfg.resolve();
+  const command = resolved.command;
+  const args = resolved.args || [];
+  const fallback = resolved.fallback || null;
+
+  const env = buildPtyEnv();
+
+  const ptyOpts = {
+    name: "xterm-256color",
+    cols: 80,
+    rows: 24,
     cwd: WORKSPACE_DIR,
     env,
-  });
-
-  console.log(`Started ${tool.id} pty (pid: ${ptyProcess.pid}) -> ${resolved.command}`);
-
-  ptyProcess.onData((data) => {
-    if (ws.readyState === ws.OPEN) ws.send(data);
-  });
-
-  ws.on("message", (message) => {
-    const msg = message.toString();
-    try {
-      const data = JSON.parse(msg);
-      if (data.type === "input") {
-        ptyProcess.write(data.content);
-      } else if (data.type === "resize") {
-        ptyProcess.resize(data.cols, data.rows);
-      }
-    } catch (e) {
-      // Raw string input fallback
-      ptyProcess.write(msg);
-    }
-  });
-
-  const cleanup = () => {
-    try {
-      ptyProcess.kill();
-      console.log(`Killed pty (pid: ${ptyProcess.pid})`);
-    } catch (e) {
-      // ignore
-    }
   };
 
-  ws.on("close", cleanup);
-  ws.on("error", cleanup);
+  let proc = null;
+  let closed = false;
 
-  ptyProcess.onExit(() => {
+  function send(type, data) {
+    if (socket.readyState !== socket.OPEN) return;
+    socket.send(JSON.stringify({ type, data }));
+  }
+
+  function spawnProcess(cmd, cmdArgs) {
     try {
-      ws.close();
+      const wrapped = shellWrap(cmd, cmdArgs);
+      proc = pty.spawn(wrapped.command, wrapped.args, ptyOpts);
+
+      proc.onData((data) => send("output", data));
+      proc.onExit(({ exitCode, signal }) => {
+        if (closed) return;
+        send("system", `Process exited (code=${exitCode}${signal ? `, signal=${signal}` : ""}).`);
+        // Close shortly after so the client shows retry
+        setTimeout(() => {
+          try {
+            socket.close();
+          } catch {
+            // ignore
+          }
+        }, 150);
+      });
+
+      return true;
     } catch (e) {
+      send("error", String(e && e.message ? e.message : e));
+      return false;
+    }
+  }
+
+  // Spawn primary; if it throws synchronously, try fallback (npx)
+  const ok = spawnProcess(command, args);
+  if (!ok && fallback) {
+    spawnProcess(fallback.command, fallback.args);
+  }
+
+  socket.on("message", (raw) => {
+    if (!proc) return;
+
+    let msg = null;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+
+    if (msg.type === "input" && typeof msg.data === "string") {
+      try {
+        proc.write(msg.data);
+      } catch {
+        // ignore
+      }
+    } else if (msg.type === "resize" && typeof msg.cols === "number" && typeof msg.rows === "number") {
+      try {
+        proc.resize(msg.cols, msg.rows);
+      } catch {
+        // ignore
+      }
+    }
+  });
+
+  socket.on("close", () => {
+    closed = true;
+    try {
+      if (proc) proc.kill();
+    } catch {
       // ignore
     }
+    proc = null;
+  });
+
+  socket.on("error", () => {
+    // ignore; close handler will clean up
   });
 });
 
+app.get("/healthz", (_req, res) => {
+  res.status(200).send("ok");
+});
+
 server.listen(PORT, () => {
-  console.log(`Pocket Terminal running at http://localhost:${PORT}`);
-  console.log(`Workspace: ${WORKSPACE_DIR}`);
-  console.log(`CLI_HOME: ${CLI_HOME_DIR}`);
+  console.log(`Pocket Terminal listening on http://localhost:${PORT}`);
 });
