@@ -43,7 +43,7 @@
           <div class="panel-head">
             <h2 class="panel-title">Quick Launch</h2>
             <div class="panel-sub text-sm text-muted">
-              Installed tools show as <span class="badge badge-ok">Ready</span>. Others include an install hint.
+              Installed tools show as <span class="badge badge-ok">Ready</span>.
             </div>
           </div>
 
@@ -58,63 +58,65 @@
             <div class="tool-group">
               <div class="tool-group-head">
                 <h3>Core</h3>
-                <p class="text-xs text-muted">Always available</p>
               </div>
-              <div id="tools-core" class="tools-grid" aria-label="Core tools"></div>
+              <div id="tools-core" class="tools-grid"></div>
             </div>
 
             <div class="tool-group">
               <div class="tool-group-head">
-                <h3>AI</h3>
-                <p class="text-xs text-muted">Assistants + copilots</p>
+                <h3>AI Assistants</h3>
               </div>
-              <div id="tools-ai" class="tools-grid" aria-label="AI tools"></div>
-            </div>
-
-            <div class="tool-group">
-              <div class="tool-group-head">
-                <h3>Dev</h3>
-                <p class="text-xs text-muted">Build tools</p>
-              </div>
-              <div id="tools-dev" class="tools-grid" aria-label="Dev tools"></div>
-            </div>
-
-            <div class="tool-group">
-              <div class="tool-group-head">
-                <h3>Misc</h3>
-                <p class="text-xs text-muted">Other utilities</p>
-              </div>
-              <div id="tools-misc" class="tools-grid" aria-label="Misc tools"></div>
+              <div id="tools-ai" class="tools-grid"></div>
             </div>
           </div>
+        </section>
+
+        <section id="auth-panel" class="panel hidden">
+          <div class="panel-head">
+            <h2 class="panel-title">Authentication</h2>
+            <p class="text-sm text-muted">Login or device code detected.</p>
+          </div>
+          <div id="auth-content" class="auth-box"></div>
         </section>
       </main>
     </div>
 
     <div id="terminal-screen" class="screen hidden">
-      <header class="top-bar">
-        <div class="top-bar-left">
-          <button id="back-to-launcher" class="secondary-btn btn-sm" type="button">Back</button>
-          <div class="terminal-head">
-            <div class="terminal-title-row">
-              <h2 id="terminal-tool-name" class="terminal-title">Session</h2>
-              <span id="terminal-tool-badge" class="badge badge-muted">…</span>
+      <header class="terminal-header">
+        <div class="header-left">
+          <button id="back-to-launcher" class="icon-btn" aria-label="Back to Launcher">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div class="tool-info">
+            <div class="tool-name-row">
+              <span id="terminal-tool-name" class="font-bold">Session</span>
+              <span id="terminal-tool-badge" class="badge badge-muted">...</span>
             </div>
-            <div id="terminal-tool-sub" class="text-xs text-muted"></div>
+            <div id="terminal-tool-sub" class="text-xs text-muted">Standard Shell</div>
           </div>
         </div>
-        <div class="top-bar-right">
-          <button id="copy-terminal" class="secondary-btn btn-sm" type="button">Copy</button>
+        <div class="header-right">
+          <button id="copy-terminal" class="secondary-btn btn-sm" type="button">Copy All</button>
+          <button id="clear-terminal" class="secondary-btn btn-sm" type="button">Clear</button>
         </div>
       </header>
 
-      <main class="terminal-main">
-        <div id="api-error-hint" class="hidden"></div>
-        <div id="terminal" class="terminal-wrap" aria-label="Terminal"></div>
-      </main>
+      <div id="terminal-container"></div>
     </div>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <!-- Help Modal -->
+    <div id="help-modal" class="modal-overlay hidden">
+      <div class="modal-content panel">
+        <h3>About Pocket Terminal</h3>
+        <p class="text-sm">This is a mobile-optimized terminal for running AI CLI tools.</p>
+        <ul class="text-sm">
+          <li><strong>Copy:</strong> Long-press text or use the "Copy All" button.</li>
+          <li><strong>Auth:</strong> Run login commands in the terminal; codes appear here.</li>
+          <li><strong>Persistence:</strong> Each tool has a dedicated HOME directory.</li>
+        </ul>
+        <button id="close-help" class="primary-btn" style="width: 100%; margin-top: 1rem;">Got it</button>
+      </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
