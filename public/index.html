@@ -9,11 +9,12 @@
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#09090b" />
+    <meta name="theme-color" content="#0a0a0f" />
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   </head>
   <body>
+    <!-- Connection Status Banner -->
     <div id="connection-status" class="connection-banner hidden" role="status" aria-live="polite">
       <div class="connection-content">
         <span id="connection-text">Connecting...</span>
@@ -21,6 +22,7 @@
       </div>
     </div>
 
+    <!-- Launcher Screen -->
     <div id="launcher-screen" class="screen">
       <header class="top-bar">
         <div class="top-bar-left">
@@ -33,8 +35,12 @@
           </div>
         </div>
         <div class="top-bar-right">
-          <button id="refresh-tools" class="secondary-btn btn-sm" type="button">Refresh</button>
-          <button id="open-help" class="secondary-btn btn-sm" type="button">Help</button>
+          <button id="refresh-tools" class="secondary-btn btn-sm" type="button">
+            <span>Refresh</span>
+          </button>
+          <button id="open-help" class="secondary-btn btn-sm" type="button">
+            <span>Help</span>
+          </button>
         </div>
       </header>
 
@@ -76,48 +82,77 @@
             <h2 class="panel-title">Authentication</h2>
             <p class="text-sm text-muted">Login or device code detected.</p>
           </div>
-          <div id="auth-content" class="auth-box"></div>
+          <div id="auth-content" class="auth-content"></div>
+          <div style="margin-top: 16px; display: flex; gap: 12px;">
+            <button id="copy-auth-url" class="secondary-btn btn-sm" type="button">Copy URL</button>
+            <button id="copy-auth-code" class="secondary-btn btn-sm" type="button">Copy Code</button>
+            <button id="close-auth-panel" class="secondary-btn btn-sm" type="button">Close</button>
+          </div>
+        </section>
+
+        <section id="help-panel" class="panel hidden">
+          <div class="panel-head">
+            <h2 class="panel-title">Help & Usage</h2>
+          </div>
+          <div class="text-sm" style="line-height: 1.6;">
+            <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: var(--text);">Getting Started</h3>
+            <p>Select a tool from the <strong>Quick Launch</strong> section. Tools marked as <span class="badge badge-ok">Ready</span> are installed and available.</p>
+            
+            <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: var(--text);">AI Tools Authentication</h3>
+            <ul style="margin: 8px 0; padding-left: 20px;">
+              <li><strong>Gemini CLI</strong>: Run <code>gcloud auth application-default login --no-launch-browser</code></li>
+              <li><strong>Claude Code</strong>: Set <code>ANTHROPIC_API_KEY</code> in environment</li>
+              <li><strong>Grok CLI</strong>: Run <code>grok login</code> or set <code>XAI_API_KEY</code></li>
+              <li><strong>GitHub Copilot</strong>: Run <code>gh auth login</code></li>
+            </ul>
+
+            <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: var(--text);">Terminal Tips</h3>
+            <ul style="margin: 8px 0; padding-left: 20px;">
+              <li>Use <strong>Ctrl+C</strong> to interrupt running processes</li>
+              <li>Type <strong>exit</strong> or press <strong>Back to Launcher</strong> to return</li>
+              <li>Terminal sessions persist while you stay connected</li>
+              <li>Mobile keyboards work with all shortcuts and commands</li>
+            </ul>
+
+            <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: var(--text);">Workspace</h3>
+            <p>Your projects are stored in the workspace directory. Each AI tool maintains its own configuration and authentication state.</p>
+          </div>
+          <div style="margin-top: 20px;">
+            <button id="close-help-panel" class="btn" type="button">Got it</button>
+          </div>
         </section>
       </main>
     </div>
 
-    <div id="terminal-screen" class="screen hidden">
+    <!-- Terminal Screen -->
+    <div id="terminal-screen" class="screen terminal-screen hidden">
       <header class="terminal-header">
-        <div class="header-left">
-          <button id="back-to-launcher" class="icon-btn" aria-label="Back to Launcher">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-          </button>
-          <div class="tool-info">
-            <div class="tool-name-row">
-              <span id="terminal-tool-name" class="font-bold">Session</span>
-              <span id="terminal-tool-badge" class="badge badge-muted">...</span>
-            </div>
-            <div id="terminal-tool-sub" class="text-xs text-muted">Standard Shell</div>
+        <div class="terminal-tool-info">
+          <div>
+            <h2 id="terminal-tool-name" class="terminal-tool-name">Terminal</h2>
+            <p id="terminal-tool-sub" class="terminal-tool-sub">Loading...</p>
           </div>
+          <span id="terminal-tool-badge" class="badge badge-muted">…</span>
         </div>
-        <div class="header-right">
-          <button id="copy-terminal" class="secondary-btn btn-sm" type="button">Copy All</button>
-          <button id="clear-terminal" class="secondary-btn btn-sm" type="button">Clear</button>
+        <div class="terminal-actions">
+          <button id="copy-session" class="secondary-btn btn-sm btn-icon" type="button" title="Copy Terminal Content">
+            <span>📋</span>
+          </button>
+          <button id="clear-terminal" class="secondary-btn btn-sm btn-icon" type="button" title="Clear Terminal">
+            <span>🗑️</span>
+          </button>
+          <button id="back-to-launcher" class="secondary-btn btn-sm" type="button">
+            <span>← Back</span>
+          </button>
         </div>
       </header>
 
-      <div id="terminal-container"></div>
-    </div>
-
-    <!-- Help Modal -->
-    <div id="help-modal" class="modal-overlay hidden">
-      <div class="modal-content panel">
-        <h3>About Pocket Terminal</h3>
-        <p class="text-sm">This is a mobile-optimized terminal for running AI CLI tools.</p>
-        <ul class="text-sm">
-          <li><strong>Copy:</strong> Long-press text or use the "Copy All" button.</li>
-          <li><strong>Auth:</strong> Run login commands in the terminal; codes appear here.</li>
-          <li><strong>Persistence:</strong> Each tool has a dedicated HOME directory.</li>
-        </ul>
-        <button id="close-help" class="primary-btn" style="width: 100%; margin-top: 1rem;">Got it</button>
+      <div class="terminal-container">
+        <div id="terminal"></div>
       </div>
     </div>
 
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="/terminal.js"></script>
