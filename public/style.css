@@ -17,6 +17,9 @@
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --radius: 12px;
+
+  /* JS-updated app height to avoid iOS/Android URL bar 100vh issues */
+  --app-height: 100vh;
 }
 
 * {
@@ -114,14 +117,22 @@ h4 {
 /* Screens */
 .screen {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   display: flex;
   flex-direction: column;
   z-index: 10;
   background: var(--bg);
+
+  /* Better mobile viewport sizing:
+     - Prefer dynamic viewport (100dvh) where supported
+     - Fall back to JS-driven --app-height (updates on resize/keyboard)
+  */
+  height: 100dvh;
+  height: var(--app-height);
+  width: 100%;
+
+  /* Prevent any accidental horizontal page overflow from xterm */
+  overflow: hidden;
 }
 .screen.hidden {
   display: none;
@@ -162,69 +173,158 @@ h4 {
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
-  flex-direction: column;
   gap: 12px;
+  align-items: center;
 }
 .tool-card:hover {
   border-color: var(--border-bright);
-  background: var(--bg-elevated);
+  transform: translateY(-1px);
+}
+.tool-card:active {
+  transform: scale(0.99);
 }
 .tool-icon {
-  font-size: 24px;
+  font-size: 22px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tool-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 .tool-name {
-  display: block;
-  font-weight: 600;
-  font-size: 15px;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.2;
 }
 .tool-desc {
-  display: block;
-  font-size: 12px;
   color: var(--text-muted);
-}
-
-/* Terminal Screen */
-.terminal-header {
-  padding: calc(8px + var(--safe-top)) 12px 8px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.tool-badge {
-  background: var(--bg-elevated);
-  padding: 4px 8px;
-  border-radius: 6px;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--primary-hover);
-  letter-spacing: 0.05em;
-}
-#terminal-container {
-  flex: 1;
-  background: #09090b;
-  padding: 8px;
+  line-height: 1.2;
+  word-break: break-word;
 }
 
-/* Banner */
+/* Connection banner */
 .connection-banner {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: var(--error);
-  color: white;
-  padding: 8px;
-  font-size: 13px;
-  text-align: center;
+  left: 12px;
+  right: 12px;
+  top: calc(12px + var(--safe-top));
+  z-index: 1000;
+  background: rgba(39, 39, 42, 0.92);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  backdrop-filter: blur(10px);
 }
-.hidden {
+.connection-banner.hidden {
   display: none;
+}
+.connection-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.reconnect-btn {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.reconnect-btn.hidden {
+  display: none;
+}
+
+/* Terminal screen layout (robust on mobile) */
+.terminal-top-bar {
+  padding: calc(12px + var(--safe-top)) 12px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.terminal-top-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.terminal-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.terminal-title h2 {
+  font-size: 14px;
+  line-height: 1.2;
+}
+.terminal-title p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.2;
+}
+.terminal-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Critical: allow terminal container to shrink inside a flex column */
+.terminal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* Keep last lines above the iOS home indicator */
+  padding-bottom: var(--safe-bottom);
+}
+
+#terminal-container {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Make xterm fill the container and avoid horizontal page overflow */
+#terminal-container .xterm {
+  height: 100%;
+  width: 100%;
+}
+#terminal-container .xterm-viewport {
+  overflow-y: auto;
+}
+#terminal-container .xterm-screen {
+  width: 100%;
+}
+
+/* Improve touch scrolling behavior on iOS inside terminal viewport */
+#terminal-container .xterm-viewport {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Small screens tweaks */
+@media (max-width: 420px) {
+  .tools-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .tool-card {
+    padding: 14px;
+  }
 }
