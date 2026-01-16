@@ -22,7 +22,12 @@
   </head>
   <body>
     <!-- Connection Status Banner -->
-    <div id="connection-status" class="connection-banner hidden" role="status" aria-live="polite">
+    <div
+      id="connection-status"
+      class="connection-banner hidden"
+      role="status"
+      aria-live="polite"
+    >
       <div class="connection-content">
         <span id="connection-text">Connecting...</span>
         <button id="reconnect-btn" class="reconnect-btn hidden" type="button">
@@ -44,85 +49,164 @@
         <section class="cli-grid-section">
           <h3>CLI Tools</h3>
           <div id="cli-tools-grid" class="tools-grid">
-            <button class="tool-card" onclick="startSession('shell')" type="button">
+            <button
+              class="tool-card"
+              onclick="startSession('shell')"
+              type="button"
+            >
               <div class="tool-icon">🐚</div>
               <div class="tool-info">
                 <span class="tool-name">Shell</span>
                 <span class="tool-desc">Standard Bash session</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('gh')" type="button">
+
+            <button
+              class="tool-card"
+              onclick="startSession('gh')"
+              type="button"
+            >
               <div class="tool-icon">🐙</div>
               <div class="tool-info">
                 <span class="tool-name">GitHub CLI</span>
                 <span class="tool-desc">Manage repos & PRs</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('copilot')" type="button">
+
+            <button
+              class="tool-card"
+              onclick="startSession('copilot')"
+              type="button"
+            >
               <div class="tool-icon">🤖</div>
               <div class="tool-info">
                 <span class="tool-name">Copilot</span>
                 <span class="tool-desc">AI Pair Programmer</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('gemini')" type="button">
+
+            <button
+              class="tool-card"
+              onclick="startSession('gemini')"
+              type="button"
+            >
               <div class="tool-icon">✨</div>
               <div class="tool-info">
                 <span class="tool-name">Gemini</span>
                 <span class="tool-desc">Google AI CLI</span>
               </div>
             </button>
-            <button class="tool-card" onclick="startSession('gcloud')" type="button">
-              <div class="tool-icon">☁️</div>
-              <div class="tool-info">
-                <span class="tool-name">gcloud</span>
-                <span class="tool-desc">Google Cloud SDK</span>
-              </div>
-            </button>
-            <button class="tool-card" onclick="startSession('opencode')" type="button">
-              <div class="tool-icon">🧰</div>
-              <div class="tool-info">
-                <span class="tool-name">openCode</span>
-                <span class="tool-desc">Optional CLI tool</span>
-              </div>
-            </button>
-            <button class="tool-card" onclick="startSession('kimi')" type="button">
+
+            <button
+              class="tool-card"
+              onclick="startSession('claude')"
+              type="button"
+            >
               <div class="tool-icon">🧠</div>
               <div class="tool-info">
+                <span class="tool-name">Claude Code</span>
+                <span class="tool-desc">Anthropic CLI</span>
+              </div>
+            </button>
+
+            <button
+              class="tool-card"
+              onclick="startSession('codex')"
+              type="button"
+            >
+              <div class="tool-icon">🧩</div>
+              <div class="tool-info">
+                <span class="tool-name">Codex</span>
+                <span class="tool-desc">OpenAI CLI</span>
+              </div>
+            </button>
+
+            <button
+              class="tool-card"
+              onclick="startSession('grok')"
+              type="button"
+            >
+              <div class="tool-icon">⚡</div>
+              <div class="tool-info">
+                <span class="tool-name">Grok</span>
+                <span class="tool-desc">Grok CLI</span>
+              </div>
+            </button>
+
+            <button
+              class="tool-card"
+              onclick="startSession('cline')"
+              type="button"
+            >
+              <div class="tool-icon">🛠️</div>
+              <div class="tool-info">
+                <span class="tool-name">Cline</span>
+                <span class="tool-desc">Agentic coding CLI</span>
+              </div>
+            </button>
+
+            <button
+              class="tool-card"
+              onclick="startSession('opencode')"
+              type="button"
+            >
+              <div class="tool-icon">🧠</div>
+              <div class="tool-info">
+                <span class="tool-name">openCode</span>
+                <span class="tool-desc">AI coding assistant</span>
+              </div>
+            </button>
+
+            <button
+              class="tool-card"
+              onclick="startSession('kimi')"
+              type="button"
+            >
+              <div class="tool-icon">🌙</div>
+              <div class="tool-info">
                 <span class="tool-name">Kimi</span>
-                <span class="tool-desc">Optional CLI tool</span>
+                <span class="tool-desc">Kimi CLI</span>
               </div>
             </button>
           </div>
+        </section>
+
+        <section class="text-sm text-muted" style="margin-top: 18px">
+          Tip: If a CLI isn’t installed, Pocket Terminal will try to run it via
+          <code>npx</code>.
         </section>
       </main>
     </div>
 
     <!-- Terminal Screen -->
     <div id="terminal-screen" class="screen hidden">
-      <header class="top-bar">
-        <div class="top-bar-left">
-          <h2 id="active-tool-name">SHELL</h2>
-          <p class="text-xs text-muted">Tap screen to focus. Use Back to exit.</p>
+      <header class="terminal-bar">
+        <div class="terminal-bar-left">
+          <button
+            id="back-to-launcher"
+            class="secondary-btn btn-sm"
+            type="button"
+          >
+            Back
+          </button>
+          <div class="active-tool">
+            <span class="text-xs text-muted">Active</span>
+            <strong id="active-tool-name">SHELL</strong>
+          </div>
         </div>
-        <div class="top-bar-right">
+        <div class="terminal-bar-right">
           <button id="clear-terminal" class="secondary-btn btn-sm" type="button">
             Clear
-          </button>
-          <button id="back-to-launcher" class="secondary-btn btn-sm" type="button">
-            Back
           </button>
         </div>
       </header>
 
-      <main id="terminal-container" class="terminal-container" aria-label="Terminal"></main>
+      <div id="terminal-container" class="terminal-container"></div>
     </div>
 
     <!-- XTerm.js -->
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-
-    <!-- App -->
     <script src="/terminal.js"></script>
   </body>
 </html>

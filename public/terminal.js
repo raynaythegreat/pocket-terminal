@@ -10,7 +10,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const reconnectBtn = document.getElementById("reconnect-btn");
 
   if (backButton) backButton.addEventListener("click", switchToLauncher);
-  if (clearButton) clearButton.addEventListener("click", () => term && term.clear());
+  if (clearButton)
+    clearButton.addEventListener("click", () => term && term.clear());
 
   if (reconnectBtn) {
     reconnectBtn.addEventListener("click", () => {
@@ -105,46 +106,49 @@ function startSession(toolId) {
     // If we are still on the terminal screen, show the banner
     const terminalScreen = document.getElementById("terminal-screen");
     if (terminalScreen && !terminalScreen.classList.contains("hidden")) {
-      updateConnectionBanner(true, "Disconnected. Tap Retry to reconnect.");
+      updateConnectionBanner(true, "Disconnected.", true);
     }
   };
 
   ws.onerror = () => {
-    updateConnectionBanner(true, "Connection error. Tap Retry to reconnect.");
+    connectionStatus = "disconnected";
+    updateConnectionBanner(true, "Connection error.", true);
   };
 }
 
 function switchToLauncher() {
   if (ws) {
-    ws.close();
-    ws = null;
+    try {
+      ws.close();
+    } catch (e) {
+      // ignore
+    }
   }
   switchToScreen("launcher-screen");
 }
 
 function switchToScreen(screenId) {
-  document.querySelectorAll(".screen").forEach((s) => s.classList.add("hidden"));
-  const el = document.getElementById(screenId);
-  if (el) el.classList.remove("hidden");
+  const screens = document.querySelectorAll(".screen");
+  screens.forEach((s) => s.classList.add("hidden"));
 
-  if (screenId === "terminal-screen" && fitAddon) {
-    setTimeout(() => fitAddon.fit(), 50);
-  }
+  const target = document.getElementById(screenId);
+  if (target) target.classList.remove("hidden");
 }
 
-function updateConnectionBanner(show, text = "") {
+function updateConnectionBanner(show, text, showRetry = false) {
   const banner = document.getElementById("connection-status");
-  const bannerText = document.getElementById("connection-text");
-  const reconnectBtn = document.getElementById("reconnect-btn");
+  const textEl = document.getElementById("connection-text");
+  const retryBtn = document.getElementById("reconnect-btn");
 
-  if (!banner || !bannerText || !reconnectBtn) return;
+  if (!banner || !textEl || !retryBtn) return;
 
   if (show) {
-    if (text) bannerText.textContent = text;
     banner.classList.remove("hidden");
-    reconnectBtn.classList.remove("hidden");
+    textEl.textContent = text || "Disconnected.";
+    if (showRetry) retryBtn.classList.remove("hidden");
+    else retryBtn.classList.add("hidden");
   } else {
     banner.classList.add("hidden");
-    reconnectBtn.classList.add("hidden");
+    retryBtn.classList.add("hidden");
   }
 }
