@@ -1,200 +1,197 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e
 
-echo "Installing npm dependencies (hardened)..."
+echo "🔧 Installing CLI tools for Pocket Terminal..."
 
-# Optional tool installers can be disabled by setting `SKIP_OPTIONAL_TOOLS=1`.
-SKIP_OPTIONAL_TOOLS="${SKIP_OPTIONAL_TOOLS:-0}"
-
+# Create bin directory
 mkdir -p ./bin
 
-# Render/CI should be production installs by default (avoid dev deps like vitest).
-export NODE_ENV="${NODE_ENV:-production}"
-
-# Use a clean per-build npm cache directory to avoid corrupted restored caches (EINTEGRITY).
-NPM_CACHE_DIR="${NPM_CACHE_DIR:-}"
-if [ -z "$NPM_CACHE_DIR" ]; then
-  NPM_CACHE_DIR="$(mktemp -d)"
-fi
-export npm_config_cache="$NPM_CACHE_DIR"
-rm -rf "$npm_config_cache" >/dev/null 2>&1 || true
-mkdir -p "$npm_config_cache"
-
-# Ensure we use the public npm registry (avoid mirror/CDN inconsistencies).
-npm config set registry "https://registry.npmjs.org/" >/dev/null
-
-# Add retries/timeouts for flaky networks.
-npm config set fetch-retries 5 >/dev/null
-npm config set fetch-retry-mintimeout 20000 >/dev/null
-npm config set fetch-retry-maxtimeout 120000 >/dev/null
-
-run_npm_install() {
-  if [ -f package-lock.json ]; then
-    npm ci --omit=dev --no-audit --no-fund
-  else
-    npm install --omit=dev --no-audit --no-fund
-  fi
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
 }
 
-# Retry once on EINTEGRITY (seen on Render when caches/registries serve bad tarballs).
-install_log="/tmp/npm-install.log"
-if ! run_npm_install 2>&1 | tee "$install_log"; then
-  if grep -q "EINTEGRITY" "$install_log"; then
-    echo "npm install hit EINTEGRITY; retrying with a fresh npm cache..."
-    rm -rf "$npm_config_cache" >/dev/null 2>&1 || true
-    mkdir -p "$npm_config_cache"
-    rm -rf node_modules >/dev/null 2>&1 || true
-    run_npm_install
-  else
-    echo "npm install failed (see $install_log)"
-    exit 1
-  fi
-fi
-
-# Ensure local tool scripts are executable if they exist.
-if [ -f "./kimi" ]; then
-  chmod +x "./kimi" || true
-fi
-
-if [ -f "./opencode" ]; then
-  chmod +x "./opencode" || true
-fi
-
-install_kimi_cli() {
-  echo "Installing Kimi CLI (optional)..."
-  if [ "$SKIP_OPTIONAL_TOOLS" = "1" ]; then
-    echo "SKIP_OPTIONAL_TOOLS=1 set; skipping Kimi CLI install"
-    return 0
-  fi
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "python3 not available; skipping Kimi CLI install"
-    return 0
-  fi
-
-  local venv="./kimi-cli-deps"
-  local py="${venv}/bin/python3"
-  if [ ! -x "$py" ]; then
-    py="${venv}/bin/python"
-  fi
-
-  if [ ! -x "$py" ]; then
-    rm -rf "${venv}" >/dev/null 2>&1 || true
-    if python3 -m venv "${venv}"; then
-      py="${venv}/bin/python3"
-      if [ ! -x "$py" ]; then
-        py="${venv}/bin/python"
-      fi
+# Function to download and extract GitHub CLI
+install_github_cli() {
+    echo "📦 Installing GitHub CLI..."
+    
+    # Detect architecture
+    ARCH=$(uname -m)
+    case $ARCH in
+        x86_64) GH_ARCH="amd64" ;;
+        aarch64|arm64) GH_ARCH="arm64" ;;
+        *) echo "❌ Unsupported architecture: $ARCH"; return 1 ;;
+    esac
+    
+    # Get latest release info
+    GH_VERSION=$(curl -s https://api.github.com/repos/cli/cli/releases/latest | grep -o '"tag_name": "[^"]*' | cut -d'"' -f4 | sed 's/^v//')
+    
+    if [ -z "$GH_VERSION" ]; then
+        echo "❌ Failed to get GitHub CLI version"
+        return 1
+    fi
+    
+    echo "📥 Downloading GitHub CLI v$GH_VERSION..."
+    
+    # Download based on OS
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_macOS_${GH_ARCH}.tar.gz"
     else
-      echo "python venv creation failed; skipping Kimi CLI install"
-      return 0
+        GH_URL="https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${GH_ARCH}.tar.gz"
     fi
-  fi
+    
+    curl -sL "$GH_URL" | tar -xz -C ./bin --strip-components=2 "*/bin/gh"
+    chmod +x ./bin/gh
+    echo "✅ GitHub CLI installed successfully"
+}
 
-  if [ ! -x "$py" ]; then
-    echo "venv python not found; skipping Kimi CLI install"
-    return 0
-  fi
+# Function to install GitHub Copilot CLI
+install_copilot_cli() {
+    echo "📦 Installing GitHub Copilot CLI..."
+    
+    if ! command_exists npm; then
+        echo "❌ npm is required for GitHub Copilot CLI installation"
+        return 1
+    fi
+    
+    # Install copilot CLI globally in local directory
+    export PREFIX="$(pwd)"
+    npm install -g --prefix="$(pwd)" @githubnext/github-copilot-cli
+    
+    # Create symlink in bin directory
+    ln -sf "$(pwd)/lib/node_modules/@githubnext/github-copilot-cli/dist/index.js" ./bin/copilot
+    chmod +x ./bin/copilot
+    
+    echo "✅ GitHub Copilot CLI installed successfully"
+}
 
-  if ! "$py" -m pip --version >/dev/null 2>&1; then
-    echo "pip not available; skipping Kimi CLI install"
-    return 0
-  fi
+# Function to install openCode CLI
+install_opencode() {
+    echo "📦 Installing openCode CLI..."
+    
+    if [ ! -f "./opencode" ]; then
+        echo "❌ opencode binary not found in project root"
+        return 1
+    fi
+    
+    cp ./opencode ./bin/opencode
+    chmod +x ./bin/opencode
+    echo "✅ openCode CLI installed successfully"
+}
 
-  "$py" -m pip install --upgrade pip >/dev/null 2>&1 || true
-  if "$py" -m pip install kimi-cli; then
-    if [ -x "${venv}/bin/kimi" ]; then
-      echo "Kimi CLI installed to ${venv}/bin/kimi"
+# Function to install Kimi CLI
+install_kimi() {
+    echo "📦 Installing Kimi CLI..."
+    
+    if ! command_exists python3; then
+        echo "⚠️  Python 3 not found, skipping Kimi CLI installation"
+        return 0
+    fi
+    
+    # Create virtual environment for Kimi
+    python3 -m venv ./kimi-cli-deps
+    source ./kimi-cli-deps/bin/activate
+    
+    # Install Kimi CLI dependencies
+    pip install --upgrade pip
+    pip install anthropic openai requests rich click
+    
+    # Copy Kimi CLI script
+    if [ -f "./kimi" ]; then
+        cp ./kimi ./bin/kimi
+        chmod +x ./bin/kimi
+        echo "✅ Kimi CLI installed successfully"
     else
-      echo "Kimi CLI installed, but entrypoint not found at ${venv}/bin/kimi"
+        echo "❌ kimi script not found in project root"
+        deactivate
+        return 1
     fi
-  else
-    echo "Kimi CLI install failed; skipping"
-  fi
+    
+    deactivate
 }
 
-install_opencode_release() {
-  echo "Installing openCode CLI (optional)..."
-  if [ "$SKIP_OPTIONAL_TOOLS" = "1" ]; then
-    echo "SKIP_OPTIONAL_TOOLS=1 set; skipping openCode install"
-    return 0
-  fi
-  if ! command -v curl >/dev/null 2>&1; then
-    echo "curl not available; skipping openCode install"
-    return 0
-  fi
+# Function to setup CLI environment
+setup_cli_environment() {
+    echo "🔧 Setting up CLI environment..."
+    
+    # Create CLI config directories
+    mkdir -p ./workspace/cli-home/.config/gh
+    mkdir -p ./workspace/cli-home/.config/copilot
+    
+    # Create shared environment script
+    cat > ./bin/cli-env.sh << 'EOF'
+#!/bin/bash
+# Shared CLI environment for cross-CLI interoperability
 
-  local raw_os os arch archive_ext filename url tmp_dir tmp_file extracted target_path
-  raw_os=$(uname -s)
-  os=$(echo "$raw_os" | tr '[:upper:]' '[:lower:]')
-  case "$raw_os" in
-    Darwin*) os="darwin" ;;
-    Linux*) os="linux" ;;
-    *) echo "Unsupported OS for openCode installer: ${raw_os}; skipping"; return 0 ;;
-  esac
+# Set up paths
+export CLI_HOME="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/workspace/cli-home"
+export PATH="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")"):$PATH"
 
-  arch=$(uname -m)
-  if [ "$arch" = "aarch64" ]; then
-    arch="arm64"
-  fi
-  if [ "$arch" = "x86_64" ]; then
-    arch="x64"
-  fi
+# GitHub CLI configuration
+export GH_CONFIG_DIR="$CLI_HOME/.config/gh"
 
-  archive_ext=".zip"
-  if [ "$os" = "linux" ]; then
-    archive_ext=".tar.gz"
-  fi
+# Copilot CLI configuration
+export COPILOT_CONFIG_DIR="$CLI_HOME/.config/copilot"
 
-  filename="opencode-${os}-${arch}${archive_ext}"
-  url="https://github.com/anomalyco/opencode/releases/latest/download/${filename}"
+# Enable CLI cross-access
+export GH_TOKEN="${GITHUB_TOKEN:-$GH_TOKEN}"
+export COPILOT_API_KEY="${GITHUB_TOKEN:-$GH_TOKEN}"
 
-  tmp_dir=$(mktemp -d)
-  tmp_file="${tmp_dir}/${filename}"
-
-  echo "Downloading openCode (${filename})..."
-  if ! curl -fL "$url" -o "$tmp_file"; then
-    echo "openCode download failed; skipping"
-    rm -rf "$tmp_dir" >/dev/null 2>&1 || true
-    return 0
-  fi
-
-  if [ "$os" = "linux" ]; then
-    if ! command -v tar >/dev/null 2>&1; then
-      echo "tar not available; skipping openCode install"
-      rm -rf "$tmp_dir" >/dev/null 2>&1 || true
-      return 0
-    fi
-    tar -xzf "$tmp_file" -C "$tmp_dir"
-  else
-    if ! command -v unzip >/dev/null 2>&1; then
-      echo "unzip not available; skipping openCode install"
-      rm -rf "$tmp_dir" >/dev/null 2>&1 || true
-      return 0
-    fi
-    unzip -q "$tmp_file" -d "$tmp_dir"
-  fi
-
-  extracted=$(find "$tmp_dir" -maxdepth 4 -type f -name opencode -print -quit 2>/dev/null || true)
-  if [ -z "$extracted" ]; then
-    echo "openCode binary not found in archive; skipping"
-    rm -rf "$tmp_dir" >/dev/null 2>&1 || true
-    return 0
-  fi
-
-  target_path="./bin/opencode"
-  if [ "$os" = "darwin" ]; then
-    target_path="./bin/opencode-darwin"
-  fi
-
-  cp "$extracted" "$target_path"
-  chmod +x "$target_path" || true
-  echo "openCode CLI installed to ${target_path}"
-
-  rm -rf "$tmp_dir" >/dev/null 2>&1 || true
-  return 0
+# Kimi CLI environment
+if [ -f "$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/kimi-cli-deps/bin/activate" ]; then
+    source "$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")/kimi-cli-deps/bin/activate"
+fi
+EOF
+    
+    chmod +x ./bin/cli-env.sh
+    echo "✅ CLI environment setup complete"
 }
 
-install_kimi_cli
-install_opencode_release
+# Main installation process
+main() {
+    echo "🚀 Starting CLI installation process..."
+    
+    # Install each CLI tool
+    install_github_cli || echo "⚠️  GitHub CLI installation failed"
+    install_copilot_cli || echo "⚠️  Copilot CLI installation failed"
+    install_opencode || echo "⚠️  openCode CLI installation failed"
+    install_kimi || echo "⚠️  Kimi CLI installation failed"
+    
+    # Setup shared environment
+    setup_cli_environment
+    
+    echo ""
+    echo "📋 Installation Summary:"
+    echo "========================"
+    
+    if [ -x "./bin/gh" ]; then
+        echo "✅ GitHub CLI: $(./bin/gh --version | head -1)"
+    else
+        echo "❌ GitHub CLI: Not installed"
+    fi
+    
+    if [ -x "./bin/copilot" ]; then
+        echo "✅ Copilot CLI: Installed"
+    else
+        echo "❌ Copilot CLI: Not installed"
+    fi
+    
+    if [ -x "./bin/opencode" ]; then
+        echo "✅ openCode CLI: Installed"
+    else
+        echo "❌ openCode CLI: Not installed"
+    fi
+    
+    if [ -x "./bin/kimi" ]; then
+        echo "✅ Kimi CLI: Installed"
+    else
+        echo "❌ Kimi CLI: Not installed"
+    fi
+    
+    echo ""
+    echo "🎉 CLI installation complete!"
+    echo "💡 Tip: Set GITHUB_TOKEN environment variable for GitHub CLI and Copilot authentication"
+}
 
-echo "Build completed."
+# Run main function
+main

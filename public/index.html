@@ -65,125 +65,75 @@
 
       <main class="launcher-main">
         <section class="cli-grid-section">
-          <h3>AI CLI Tools</h3>
+          <h3>CLI Tools</h3>
           <p class="text-sm text-muted">
             Tap a tool to start a new terminal session. Tools not installed on
             the server are greyed out.
           </p>
-
-          <div class="cli-grid">
-            <div
-              class="cli-card"
-              data-tool-id="shell"
-              onclick="launchCLI('shell')"
-            >
-              <h4>Shell</h4>
-              <p class="text-xs">Standard shell session</p>
-            </div>
-
-            <div
-              class="cli-card"
-              data-tool-id="kimi"
-              onclick="launchCLI('kimi')"
-            >
-              <h4>Kimi CLI</h4>
-              <p class="text-xs">Custom Kimi assistant</p>
-            </div>
-
-            <div
-              class="cli-card"
-              data-tool-id="opencode"
-              onclick="launchCLI('opencode')"
-            >
-              <h4>Opencode CLI</h4>
-              <p class="text-xs">Code-focused assistant</p>
-            </div>
-
-            <div
-              class="cli-card"
-              data-tool-id="claude"
-              onclick="launchCLI('claude')"
-            >
-              <h4>Claude Code</h4>
-              <p class="text-xs">Anthropic coding assistant</p>
-            </div>
-
-            <div
-              class="cli-card"
-              data-tool-id="gemini"
-              onclick="launchCLI('gemini')"
-            >
-              <h4>Gemini CLI</h4>
-              <p class="text-xs">Google's AI coding assistant</p>
-            </div>
-
-            <div
-              class="cli-card"
-              data-tool-id="copilot"
-              onclick="launchCLI('copilot')"
-            >
-              <h4>GitHub Copilot</h4>
-              <p class="text-xs">AI pair programmer</p>
-            </div>
-
-            <div
-              class="cli-card"
-              data-tool-id="kilocode"
-              onclick="launchCLI('kilocode')"
-            >
-              <h4>Kilocode CLI</h4>
-              <p class="text-xs">Advanced coding assistant</p>
-            </div>
-
-            <div
-              class="cli-card"
-              data-tool-id="codex"
-              onclick="launchCLI('codex')"
-            >
-              <h4>OpenAI Codex</h4>
-              <p class="text-xs">OpenAI's code model</p>
-            </div>
-
-            <div
-              class="cli-card"
-              data-tool-id="grok"
-              onclick="launchCLI('grok')"
-            >
-              <h4>Grok CLI</h4>
-              <p class="text-xs">X.ai's assistant</p>
+          
+          <!-- GitHub Authentication Status -->
+          <div id="github-auth-status" class="auth-status-card hidden">
+            <div class="auth-status-content">
+              <span class="auth-status-icon">⚠️</span>
+              <div>
+                <p class="auth-status-title">GitHub Authentication</p>
+                <p class="auth-status-desc">Set GITHUB_TOKEN for full GitHub CLI and Copilot functionality</p>
+              </div>
             </div>
           </div>
-        </section>
-      </main>
-    </div>
 
-    <!-- Terminal Screen -->
-    <div id="terminal-screen" class="screen hidden">
-      <header class="terminal-header">
-        <div class="terminal-header-left">
-          <button id="back-to-launcher" class="back-btn" type="button" aria-label="Back to launcher">
-            ←
-          </button>
-          <div class="terminal-title">
-            <h3 id="terminal-tool-name">Terminal</h3>
-            <p class="text-xs text-muted" id="terminal-status">Connected</p>
-          </div>
-        </div>
-        <div class="terminal-header-right">
-          <button id="logout-button-terminal" class="secondary-btn btn-sm" type="button">
-            Logout
-          </button>
-        </div>
-      </header>
+          <div class="cli-grid" id="cli-tools-grid">
+            <!-- System Tools -->
+            <div class="cli-category">
+              <h4 class="category-title">System</h4>
+              <div class="cli-card" data-tool-id="shell" onclick="launchCLI('shell')">
+                <div class="cli-card-header">
+                  <span class="cli-icon">🖥️</span>
+                  <h4>Shell</h4>
+                </div>
+                <p class="text-xs">Standard shell session with all CLI tools available</p>
+              </div>
+            </div>
 
-      <main class="terminal-main">
-        <div id="terminal-container" class="terminal-container"></div>
-      </main>
-    </div>
+            <!-- Git & GitHub Tools -->
+            <div class="cli-category">
+              <h4 class="category-title">Git & GitHub</h4>
+              <div class="cli-card" data-tool-id="gh" onclick="launchCLI('gh')">
+                <div class="cli-card-header">
+                  <span class="cli-icon">📱</span>
+                  <h4>GitHub CLI</h4>
+                  <span class="auth-required-badge">Auth</span>
+                </div>
+                <p class="text-xs">Official GitHub command line interface</p>
+                <p class="setup-hint text-xs">Run 'gh auth login' to authenticate</p>
+              </div>
+            </div>
 
-    <!-- XTerm.js JavaScript -->
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-    <script src="/terminal.js"></script>
-  </body>
-</html>
+            <!-- AI Tools -->
+            <div class="cli-category">
+              <h4 class="category-title">AI Assistant</h4>
+              <div class="cli-card" data-tool-id="copilot" onclick="launchCLI('copilot')">
+                <div class="cli-card-header">
+                  <span class="cli-icon">🤖</span>
+                  <h4>GitHub Copilot</h4>
+                  <span class="auth-required-badge">Auth</span>
+                </div>
+                <p class="text-xs">AI pair programmer command line interface</p>
+                <p class="setup-hint text-xs">Requires GitHub authentication</p>
+              </div>
+
+              <div class="cli-card" data-tool-id="opencode" onclick="launchCLI('opencode')">
+                <div class="cli-card-header">
+                  <span class="cli-icon">💻</span>
+                  <h4>openCode</h4>
+                </div>
+                <p class="text-xs">AI-powered code assistant for development tasks</p>
+              </div>
+
+              <div class="cli-card" data-tool-id="kimi" onclick="launchCLI('kimi')">
+                <div class="cli-card-header">
+                  <span class="cli-icon">💬</span>
+                  <h4>Kimi Chat</h4>
+                </div>
+                <p class="text-xs">Conversational AI for general assistance</p>
+              </div
