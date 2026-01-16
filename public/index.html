@@ -11,11 +11,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#09090b" />
     <link rel="stylesheet" href="/style.css" />
-    <!-- XTerm.js CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
   </head>
   <body>
-    <!-- Connection Status Banner -->
     <div id="connection-status" class="connection-banner hidden" role="status" aria-live="polite">
       <div class="connection-content">
         <span id="connection-text">Connecting...</span>
@@ -23,122 +21,148 @@
       </div>
     </div>
 
-    <!-- Launcher Screen (Default) -->
     <div id="launcher-screen" class="screen">
       <header class="top-bar">
         <div class="top-bar-left">
-          <h2>Pocket Terminal</h2>
-          <p class="text-xs text-muted">Choose a tool to start a session</p>
+          <div class="app-mark">
+            <div class="app-dot" aria-hidden="true"></div>
+            <div>
+              <h1 class="app-title">Pocket Terminal</h1>
+              <p class="text-xs text-muted">Mobile-first terminal + AI CLI launchers</p>
+            </div>
+          </div>
         </div>
         <div class="top-bar-right">
-          <!-- (If you add header actions later, this container is now responsive/wrap-friendly) -->
+          <button id="refresh-tools" class="secondary-btn btn-sm" type="button">Refresh</button>
+          <button id="open-help" class="secondary-btn btn-sm" type="button">Help</button>
         </div>
       </header>
 
       <main class="launcher-main">
-        <section class="cli-grid-section">
-          <h3>CLI Tools</h3>
-          <div id="cli-tools-grid" class="tools-grid">
-            <button class="tool-card" onclick="startSession('shell')" type="button">
-              <div class="tool-icon">🐚</div>
-              <div class="tool-info">
-                <span class="tool-name">Shell</span>
-                <span class="tool-desc">Standard Bash session</span>
-              </div>
-            </button>
+        <section class="panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Quick Launch</h2>
+            <div class="panel-sub text-sm text-muted">
+              Installed tools show as <span class="badge badge-ok">Ready</span>. Others include an install hint.
+            </div>
+          </div>
 
-            <button class="tool-card" onclick="startSession('gh')" type="button">
-              <div class="tool-icon">🐙</div>
-              <div class="tool-info">
-                <span class="tool-name">GitHub CLI</span>
-                <span class="tool-desc">Manage repos & PRs</span>
-              </div>
-            </button>
+          <div id="tools-loading" class="loading-row" role="status" aria-live="polite">
+            <div class="spinner" aria-hidden="true"></div>
+            <div class="text-sm text-muted">Loading tools…</div>
+          </div>
 
-            <button class="tool-card" onclick="startSession('copilot')" type="button">
-              <div class="tool-icon">🤖</div>
-              <div class="tool-info">
-                <span class="tool-name">Copilot</span>
-                <span class="tool-desc">AI Pair Programmer</span>
-              </div>
-            </button>
+          <div id="tools-error" class="alert alert-error hidden" role="alert"></div>
 
-            <button class="tool-card" onclick="startSession('gemini')" type="button">
-              <div class="tool-icon">✨</div>
-              <div class="tool-info">
-                <span class="tool-name">Gemini</span>
-                <span class="tool-desc">Google Gemini CLI</span>
+          <div class="tool-groups">
+            <div class="tool-group">
+              <div class="tool-group-head">
+                <h3>Core</h3>
+                <p class="text-xs text-muted">Always available</p>
               </div>
-            </button>
+              <div id="tools-core" class="tools-grid" aria-label="Core tools"></div>
+            </div>
 
-            <button class="tool-card" onclick="startSession('claude')" type="button">
-              <div class="tool-icon">🧠</div>
-              <div class="tool-info">
-                <span class="tool-name">Claude Code</span>
-                <span class="tool-desc">Anthropic coding CLI</span>
+            <div class="tool-group">
+              <div class="tool-group-head">
+                <h3>Dev</h3>
+                <p class="text-xs text-muted">Project tooling</p>
               </div>
-            </button>
+              <div id="tools-dev" class="tools-grid" aria-label="Developer tools"></div>
+            </div>
 
-            <button class="tool-card" onclick="startSession('codex')" type="button">
-              <div class="tool-icon">🧩</div>
-              <div class="tool-info">
-                <span class="tool-name">Codex</span>
-                <span class="tool-desc">OpenAI Codex CLI</span>
+            <div class="tool-group">
+              <div class="tool-group-head">
+                <h3>AI</h3>
+                <p class="text-xs text-muted">AI CLIs (may require tokens)</p>
               </div>
-            </button>
+              <div id="tools-ai" class="tools-grid" aria-label="AI tools"></div>
+            </div>
+          </div>
+        </section>
 
-            <button class="tool-card" onclick="startSession('grok')" type="button">
-              <div class="tool-icon">🌀</div>
-              <div class="tool-info">
-                <span class="tool-name">Grok</span>
-                <span class="tool-desc">Grok CLI</span>
+        <section class="panel panel-footnote">
+          <div class="footnote">
+            <div class="footnote-row">
+              <div class="text-sm">
+                Workspace: <code id="workspace-dir">…</code>
               </div>
-            </button>
-
-            <button class="tool-card" onclick="startSession('cline')" type="button">
-              <div class="tool-icon">🛠️</div>
-              <div class="tool-info">
-                <span class="tool-name">Cline</span>
-                <span class="tool-desc">Cline/Kilo CLI</span>
+              <div class="text-sm">
+                CLI Home: <code id="cli-home-dir">…</code>
               </div>
-            </button>
-
-            <button class="tool-card" onclick="startSession('opencode')" type="button">
-              <div class="tool-icon">🧱</div>
-              <div class="tool-info">
-                <span class="tool-name">OpenCode</span>
-                <span class="tool-desc">openCode CLI</span>
-              </div>
-            </button>
+            </div>
+            <div class="text-xs text-muted">
+              Set secrets in your hosting environment variables (Vercel or Render) or <code>.env.local</code>.
+            </div>
           </div>
         </section>
       </main>
     </div>
 
-    <!-- Terminal Screen -->
     <div id="terminal-screen" class="screen hidden">
-      <header class="terminal-top-bar">
-        <div class="terminal-top-left">
-          <button class="icon-btn" type="button" onclick="switchToLauncher()" aria-label="Back">
-            ←
-          </button>
-          <div>
-            <h3 id="terminal-title">Terminal</h3>
-            <p id="terminal-subtitle" class="text-xs text-muted">Connected</p>
+      <header class="terminal-bar">
+        <button id="back-btn" class="icon-btn" type="button" aria-label="Back to launcher">
+          <span aria-hidden="true">←</span>
+        </button>
+
+        <div class="terminal-meta">
+          <div class="terminal-title-row">
+            <span id="terminal-tool-name" class="terminal-title">Session</span>
+            <span id="terminal-tool-badge" class="badge badge-muted">…</span>
           </div>
+          <div id="terminal-tool-sub" class="terminal-sub text-xs text-muted">Connecting…</div>
         </div>
-        <div class="terminal-top-right">
-          <button class="secondary-btn btn-sm" type="button" onclick="sendCtrlC()">Ctrl+C</button>
-          <button class="secondary-btn btn-sm" type="button" onclick="clearTerminal()">
-            Clear
-          </button>
+
+        <div class="terminal-actions">
+          <button id="copy-btn" class="secondary-btn btn-sm" type="button">Copy</button>
+          <button id="paste-btn" class="secondary-btn btn-sm" type="button">Paste</button>
+          <button id="ctrlc-btn" class="secondary-btn btn-sm" type="button">Ctrl+C</button>
         </div>
       </header>
 
-      <div id="terminal-container" aria-label="Terminal"></div>
+      <main class="terminal-main">
+        <div id="terminal-container" class="terminal-container" aria-label="Terminal"></div>
+      </main>
     </div>
 
-    <!-- XTerm.js + addons -->
+    <dialog id="hint-dialog" class="dialog">
+      <form method="dialog" class="dialog-inner">
+        <div class="dialog-head">
+          <h3 id="hint-title">Tool not available</h3>
+          <button class="icon-btn" type="submit" aria-label="Close">✕</button>
+        </div>
+        <div id="hint-body" class="dialog-body text-sm"></div>
+        <div class="dialog-actions">
+          <button class="secondary-btn" type="submit">Close</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="help-dialog" class="dialog">
+      <form method="dialog" class="dialog-inner">
+        <div class="dialog-head">
+          <h3>Help</h3>
+          <button class="icon-btn" type="submit" aria-label="Close">✕</button>
+        </div>
+        <div class="dialog-body text-sm">
+          <p>
+            Pocket Terminal runs each tool in a pseudo-terminal on the server. Some CLIs require API keys.
+          </p>
+          <ul>
+            <li>Claude Code: set <code>ANTHROPIC_API_KEY</code></li>
+            <li>Gemini: set <code>GEMINI_API_KEY</code></li>
+            <li>Codex/OpenAI: set <code>OPENAI_API_KEY</code></li>
+          </ul>
+          <p class="text-xs text-muted">
+            Configure in your hosting environment variables (Vercel or Render) or <code>.env.local</code>.
+          </p>
+        </div>
+        <div class="dialog-actions">
+          <button class="secondary-btn" type="submit">Close</button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="/terminal.js"></script>
