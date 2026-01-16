@@ -30,6 +30,9 @@
           <h2>Pocket Terminal</h2>
           <p class="text-xs text-muted">Choose a tool to start a session</p>
         </div>
+        <div class="top-bar-right">
+          <!-- (If you add header actions later, this container is now responsive/wrap-friendly) -->
+        </div>
       </header>
 
       <main class="launcher-main">
@@ -72,7 +75,7 @@
               <div class="tool-icon">🧠</div>
               <div class="tool-info">
                 <span class="tool-name">Claude Code</span>
-                <span class="tool-desc">Anthropic CLI</span>
+                <span class="tool-desc">Anthropic coding CLI</span>
               </div>
             </button>
 
@@ -85,7 +88,7 @@
             </button>
 
             <button class="tool-card" onclick="startSession('grok')" type="button">
-              <div class="tool-icon">⚡</div>
+              <div class="tool-icon">🌀</div>
               <div class="tool-info">
                 <span class="tool-name">Grok</span>
                 <span class="tool-desc">Grok CLI</span>
@@ -96,7 +99,7 @@
               <div class="tool-icon">🛠️</div>
               <div class="tool-info">
                 <span class="tool-name">Cline</span>
-                <span class="tool-desc">Kilo/Cline CLI</span>
+                <span class="tool-desc">Cline/Kilo CLI</span>
               </div>
             </button>
 
@@ -104,7 +107,7 @@
               <div class="tool-icon">🧱</div>
               <div class="tool-info">
                 <span class="tool-name">OpenCode</span>
-                <span class="tool-desc">AI coding agent</span>
+                <span class="tool-desc">openCode CLI</span>
               </div>
             </button>
           </div>
@@ -114,22 +117,30 @@
 
     <!-- Terminal Screen -->
     <div id="terminal-screen" class="screen hidden">
-      <header class="terminal-header">
-        <button id="back-to-launcher" class="secondary-btn btn-sm" type="button">Back</button>
-        <div class="terminal-title-wrap">
-          <span id="terminal-title" class="terminal-title">Terminal</span>
-          <span id="terminal-subtitle" class="terminal-subtitle text-xs text-muted"></span>
+      <header class="terminal-top-bar">
+        <div class="terminal-top-left">
+          <button class="icon-btn" type="button" onclick="switchToLauncher()" aria-label="Back">
+            ←
+          </button>
+          <div>
+            <h3 id="terminal-title">Terminal</h3>
+            <p id="terminal-subtitle" class="text-xs text-muted">Connected</p>
+          </div>
         </div>
-        <button id="clear-terminal" class="secondary-btn btn-sm" type="button">Clear</button>
+        <div class="terminal-top-right">
+          <button class="secondary-btn btn-sm" type="button" onclick="sendCtrlC()">Ctrl+C</button>
+          <button class="secondary-btn btn-sm" type="button" onclick="clearTerminal()">
+            Clear
+          </button>
+        </div>
       </header>
 
-      <div id="terminal-container" class="terminal-container" aria-label="Terminal"></div>
+      <div id="terminal-container" aria-label="Terminal"></div>
     </div>
 
-    <!-- XTerm.js -->
+    <!-- XTerm.js + addons -->
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
-
     <script src="/terminal.js"></script>
   </body>
 </html>

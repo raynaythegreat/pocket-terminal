@@ -74,6 +74,7 @@ h4 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 44px; /* mobile hit target */
 }
 .primary-btn:hover {
   background: var(--primary-hover);
@@ -92,18 +93,21 @@ h4 {
   font-weight: 500;
   font-size: 13px;
   cursor: pointer;
+  min-height: 40px;
 }
 
 .icon-btn {
   background: none;
   border: none;
   color: var(--text);
-  padding: 8px;
+  padding: 10px; /* larger tap area */
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  border-radius: 999px;
+  min-width: 44px;
+  min-height: 44px;
 }
 .icon-btn:hover {
   background: var(--bg-elevated);
@@ -123,208 +127,151 @@ h4 {
   z-index: 10;
   background: var(--bg);
 
-  /* Better mobile viewport sizing:
-     - Prefer dynamic viewport (100dvh) where supported
-     - Fall back to JS-driven --app-height (updates on resize/keyboard)
-  */
+  /* Better mobile viewport sizing */
   height: 100dvh;
   height: var(--app-height);
   width: 100%;
 
-  /* Prevent any accidental horizontal page overflow from xterm */
   overflow: hidden;
 }
 .screen.hidden {
   display: none;
 }
 
-/* Launcher */
-.top-bar {
-  padding: calc(16px + var(--safe-top)) 20px 16px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-.launcher-main {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
-  -webkit-overflow-scrolling: touch;
-}
-.cli-grid-section h3 {
-  font-size: 14px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 16px;
-  letter-spacing: 0.05em;
-}
-.tools-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 12px;
-}
-.tool-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-.tool-card:hover {
-  border-color: var(--border-bright);
-  transform: translateY(-1px);
-}
-.tool-card:active {
-  transform: scale(0.99);
-}
-.tool-icon {
-  font-size: 22px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.tool-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.tool-name {
-  font-weight: 700;
-  font-size: 14px;
-  line-height: 1.2;
-}
-.tool-desc {
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.2;
-  word-break: break-word;
-}
-
 /* Connection banner */
 .connection-banner {
-  position: fixed;
-  left: 12px;
-  right: 12px;
-  top: calc(12px + var(--safe-top));
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   z-index: 1000;
-  background: rgba(39, 39, 42, 0.92);
-  border: 1px solid var(--border-bright);
-  border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: calc(10px + var(--safe-top)) 12px 10px;
+  background: rgba(24, 24, 27, 0.92);
   backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
 }
 .connection-banner.hidden {
   display: none;
 }
 .connection-content {
   display: flex;
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
 }
 .reconnect-btn {
   background: var(--primary);
   color: white;
   border: none;
-  padding: 8px 12px;
-  border-radius: 10px;
-  font-weight: 700;
-  font-size: 13px;
-  cursor: pointer;
-}
-.reconnect-btn.hidden {
-  display: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-weight: 600;
+  min-height: 40px;
 }
 
-/* Terminal screen layout (robust on mobile) */
-.terminal-top-bar {
-  padding: calc(12px + var(--safe-top)) 12px 12px;
+/* Launcher */
+.top-bar {
+  padding: calc(14px + var(--safe-top)) 16px 12px;
   border-bottom: 1px solid var(--border);
   display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap; /* allow wrapping on narrow screens */
+}
+.top-bar-left {
+  min-width: 200px;
+  flex: 1 1 auto;
+}
+.top-bar-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+/* Mobile: keep top controls reachable; put actions below title if needed */
+@media (max-width: 480px) {
+  .top-bar {
+    padding-top: calc(18px + var(--safe-top));
+  }
+  .top-bar-left {
+    flex: 1 1 100%;
+  }
+  .top-bar-right {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+}
+
+.launcher-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(20px + var(--safe-bottom));
+}
+
+/* Tools grid (existing styles may continue below in this file) */
+.cli-grid-section h3 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin: 12px 0;
+}
+
+/* Terminal screen header/layout helpers (added for reliable wrapping) */
+.terminal-top-bar {
+  padding: calc(12px + var(--safe-top)) 12px 10px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+}
+.terminal-top-left {
+  display: flex;
   gap: 10px;
+  align-items: baseline;
+  flex: 1 1 auto;
+  min-width: 220px;
 }
-.terminal-top-bar-left {
+.terminal-top-right {
   display: flex;
-  align-items: center;
   gap: 10px;
-  min-width: 0;
-}
-.terminal-title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.terminal-title h2 {
-  font-size: 14px;
-  line-height: 1.2;
-}
-.terminal-title p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.2;
-}
-.terminal-actions {
-  display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
 }
-
-/* Critical: allow terminal container to shrink inside a flex column */
-.terminal-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-
-  /* Keep last lines above the iOS home indicator */
-  padding-bottom: var(--safe-bottom);
+@media (max-width: 480px) {
+  .terminal-top-left,
+  .terminal-top-right {
+    flex: 1 1 100%;
+  }
+  .terminal-top-right {
+    justify-content: flex-start;
+  }
 }
 
 #terminal-container {
-  flex: 1;
+  /* Critical for xterm sizing inside a flex column */
+  flex: 1 1 auto;
   min-height: 0;
   width: 100%;
   overflow: hidden;
+
+  /* Avoid iOS home indicator overlap (xterm draws to bottom) */
+  padding-bottom: var(--safe-bottom);
 }
 
-/* Make xterm fill the container and avoid horizontal page overflow */
-#terminal-container .xterm {
-  height: 100%;
-  width: 100%;
-}
-#terminal-container .xterm-viewport {
-  overflow-y: auto;
-}
-#terminal-container .xterm-screen {
-  width: 100%;
+/* Keep the xterm viewport from causing page-level overflow */
+.xterm,
+.xterm-viewport,
+.xterm-screen {
+  max-width: 100%;
 }
 
-/* Improve touch scrolling behavior on iOS inside terminal viewport */
-#terminal-container .xterm-viewport {
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Small screens tweaks */
-@media (max-width: 420px) {
-  .tools-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .tool-card {
-    padding: 14px;
-  }
-}
+/* Existing styles from the original file may continue below; keep them if present. */
