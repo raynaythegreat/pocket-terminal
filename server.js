@@ -1,20 +1,17 @@
-const dotenv = require("dotenv");
-dotenv.config();
+/**
+ * Legacy server entry point - redirects to new architecture.
+ * This file maintains backwards compatibility while the new architecture is in src/.
+ */
 
-const { loadConfig } = require("./src/config/env");
 const { createServer } = require("./src/server");
 
-const config = loadConfig();
-const { server } = createServer({ config });
+// Export the new server creation function
+module.exports = createServer().server;
 
-const PORT = config.port;
-
-// Only listen when run directly (supports tests requiring the module).
+// If this file is run directly, delegate to the new server
 if (require.main === module) {
-  server.listen(PORT, () => {
-    // eslint-disable-next-line no-console
-    console.log(`Pocket Terminal listening on port ${PORT}`);
-  });
+  const { server } = createServer();
+  
+  // The new server handles its own startup
+  // This is just for backwards compatibility
 }
-
-module.exports = server;
