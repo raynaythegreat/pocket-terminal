@@ -8,10 +8,26 @@ const { createToolsRouter } = require("./routes/tools");
 const { createAuthRouter } = require("./routes/auth");
 
 function createApp({ config, sessionStore }) {
-  ensureWorkspaceDirs({
-    workspaceDir: config.workspaceDir,
-    cliHomeDir: config.cliHomeDir,
-  });
+  // Initialize workspace directories with error handling
+  try {
+    ensureWorkspaceDirs({
+      workspaceDir: config.workspaceDir,
+      cliHomeDir: config.cliHomeDir,
+    });
+    console.log(`✓ Workspace directories initialized`);
+    console.log(`  - Workspace: ${config.workspaceDir}`);
+    console.log(`  - CLI Home: ${config.cliHomeDir}`);
+  } catch (error) {
+    console.error(`✗ Failed to initialize workspace directories:`, error.message);
+    
+    // In production, we might want to exit. In development, continue with warning.
+    if (process.env.NODE_ENV === "production") {
+      throw error;
+    }
+    
+    // For development, create a minimal fallback
+    console.warn(`  Continuing in degraded mode. Some features may not work.`);
+  }
 
   const app = express();
 
