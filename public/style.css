@@ -30,7 +30,7 @@ body::before {
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-  opacity: 0.25;
+  opacity: 0.4; /* Increased visibility */
   z-index: -1;
 }
 
@@ -44,7 +44,7 @@ body::before {
 
 .panel {
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 20px; margin: 12px;
@@ -64,11 +64,12 @@ body::before {
 .tool-card {
   background: var(--bg-elevated); padding: 16px;
   border-radius: 12px; border: 1px solid var(--border);
-  text-align: center; cursor: pointer; transition: transform 0.1s;
+  text-align: center; cursor: pointer; transition: transform 0.1s, background 0.2s;
 }
 
 .tool-card:active { transform: scale(0.95); }
-.tool-card.disabled { opacity: 0.5; cursor: not-allowed; }
+.tool-card:hover { background: rgba(255,255,255,0.05); }
+.tool-card.disabled { opacity: 0.4; cursor: not-allowed; }
 
 .badge {
   font-size: 10px; padding: 2px 6px; border-radius: 4px;
@@ -76,7 +77,16 @@ body::before {
 }
 .badge-ok { background: var(--success); color: white; }
 
-#terminal-container { flex: 1; background: #000; overflow: hidden; }
+#terminal-container { 
+  flex: 1; 
+  background: rgba(0, 0, 0, 0.6); /* Transparent terminal background */
+  backdrop-filter: blur(4px);
+  overflow: hidden; 
+}
+
+.xterm-viewport {
+  background-color: transparent !important;
+}
 
 .action-btn {
   display: flex; align-items: center; gap: 6px;

@@ -20,7 +20,10 @@ function initTerminal() {
     cursorBlink: true,
     fontSize: 14,
     fontFamily: '"SF Mono", Monaco, "Cascadia Code", monospace',
-    theme: { background: '#000000', foreground: '#f8fafc' },
+    theme: { 
+      background: 'transparent', // Allow CSS background to show through
+      foreground: '#f8fafc' 
+    },
     allowProposedApi: true
   });
 
@@ -34,7 +37,9 @@ function initTerminal() {
     }
   });
 
-  window.addEventListener('resize', () => fitAddon.fit());
+  window.addEventListener('resize', () => {
+    if (fitAddon) fitAddon.fit();
+  });
 }
 
 async function fetchTools() {
@@ -85,8 +90,14 @@ function runTool(toolId, toolName) {
 
 async function copyTerminalContent() {
   if (!term) return;
-  term.selectAll();
-  const text = term.getSelection();
+  
+  // Select all content if nothing is selected
+  let text = term.getSelection();
+  if (!text) {
+    term.selectAll();
+    text = term.getSelection();
+  }
+  
   try {
     await navigator.clipboard.writeText(text);
     const btn = document.getElementById('copy-terminal');

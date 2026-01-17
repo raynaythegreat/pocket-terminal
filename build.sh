@@ -7,8 +7,8 @@ echo "--- Building Pocket Terminal ---"
 mkdir -p workspace/projects
 mkdir -p workspace/cli-home
 
-# Set permissions
-chmod +x kimi opencode
+# Set permissions for scripts
+chmod +x kimi opencode build.sh
 
 # Install dependencies
 npm install

@@ -1,22 +1,10 @@
-#!/usr/bin/env node
-
-const childProcess = require("child_process")
-const path = require("path")
-
-const scriptPath = path.resolve(__dirname, "kimi-cli-deps", "bin", "kimi")
-const result = childProcess.spawnSync(scriptPath, process.argv.slice(2), {
-  stdio: "inherit",
-  env: {
-    ...process.env,
-    VIRTUAL_ENV: path.resolve(__dirname, "kimi-cli-deps"),
-    PATH: `${path.resolve(__dirname, "kimi-cli-deps", "bin")}:${process.env.PATH || ""}`,
-  },
-})
-
-if (result.error) {
-  console.error(result.error.message)
-  process.exit(1)
-}
-
-const code = typeof result.status === "number" ? result.status : 0
-process.exit(code)
+#!/bin/bash
+echo -e "\033[1;34m--- Kimi CLI Launcher ---\033[0m"
+if command -v kimi &> /dev/null; then
+    exec kimi "$@"
+else
+    echo -e "\033[33mKimi CLI not found in PATH.\033[0m"
+    echo "Please install it using: npm install -g @moonshot-ai/kimi-cli"
+    echo "Or configure your API keys in .env"
+    bash
+fi
