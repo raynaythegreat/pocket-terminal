@@ -53,80 +53,47 @@
             </div>
           </div>
 
-          <div id="tools-loading" class="loading-row" role="status" aria-live="polite">
-            <div class="spinner" aria-hidden="true"></div>
+          <div id="tools-loading" class="loading-row">
+            <div class="spinner"></div>
             <div class="text-sm text-muted">Loading tools…</div>
           </div>
 
-          <div id="tools-error" class="alert alert-error hidden" role="alert"></div>
-
           <div class="tool-groups">
             <div class="tool-group">
-              <div class="tool-group-head">
-                <h3>Core</h3>
-              </div>
+              <div class="tool-group-head"><h3>Core</h3></div>
               <div id="tools-core" class="tools-grid"></div>
             </div>
 
             <div class="tool-group">
-              <div class="tool-group-head">
-                <h3>AI Assistants</h3>
-              </div>
+              <div class="tool-group-head"><h3>AI Assistants</h3></div>
               <div id="tools-ai" class="tools-grid"></div>
             </div>
           </div>
         </section>
-
-        <section id="auth-panel" class="panel hidden">
-          <div class="panel-head">
-            <h2 class="panel-title">Authentication</h2>
-          </div>
-          <form id="auth-form" class="auth-form">
-            <input type="password" id="app-password" placeholder="Enter password" class="input-field" required />
-            <button type="submit" class="primary-btn">Login</button>
-          </form>
-        </section>
       </main>
-
-      <footer class="launcher-footer">
-        <div class="footer-note">Running on <span id="env-provider">Node.js</span></div>
-      </footer>
     </div>
 
     <!-- Terminal Screen -->
     <div id="terminal-screen" class="screen hidden">
       <header class="terminal-bar">
-        <div class="terminal-bar-left">
-          <button id="back-to-launcher" class="icon-btn" aria-label="Go back">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-          </button>
-          <span id="active-tool-name" class="tool-name">Terminal</span>
+        <button id="back-to-launcher" class="back-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </button>
+        <div class="terminal-info">
+          <span id="active-tool-name" class="active-tool">Terminal</span>
+          <span class="status-dot"></span>
         </div>
-        <div class="terminal-bar-right">
-          <button id="clear-term" class="secondary-btn btn-sm">Clear</button>
+        <div class="terminal-actions">
+          <button id="copy-terminal" class="action-btn" title="Copy Terminal Output">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Copy</span>
+          </button>
         </div>
       </header>
       <div id="terminal-container"></div>
-      <div class="terminal-controls">
-        <button class="kbd-btn" data-key="tab">TAB</button>
-        <button class="kbd-btn" data-key="esc">ESC</button>
-        <button class="kbd-btn" data-key="ctrl-c">^C</button>
-        <button class="kbd-btn" data-key="up">↑</button>
-        <button class="kbd-btn" data-key="down">↓</button>
-      </div>
-    </div>
-
-    <!-- Help Modal -->
-    <div id="help-modal" class="modal hidden">
-      <div class="modal-content panel">
-        <h3>Pocket Terminal Help</h3>
-        <p>This is a mobile-optimized interface for running CLI tools.</p>
-        <ul>
-          <li><strong>Persistent Storage:</strong> Tools store config in individual home directories.</li>
-          <li><strong>Workspace:</strong> All commands run in the <code>/workspace</code> folder.</li>
-        </ul>
-        <button id="close-help" class="primary-btn">Got it</button>
-      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>

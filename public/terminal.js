@@ -2,33 +2,15 @@ let ws = null;
 let term = null;
 let fitAddon = null;
 let currentTool = "shell";
-let connectionStatus = "disconnected";
-
-// Set app height for mobile viewport
-function setAppHeightVar() {
-  const vv = window.visualViewport;
-  const h = vv && typeof vv.height === "number" ? vv.height : window.innerHeight;
-  document.documentElement.style.setProperty("--app-height", `${Math.floor(h)}px`);
-}
-
-function scheduleFit() {
-  if (!term || !fitAddon) return;
-  requestAnimationFrame(() => {
-    try {
-      fitAddon.fit();
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-      }
-    } catch (e) {
-      console.warn("Terminal fit error:", e);
-    }
-  });
-}
 
 function switchToScreen(id) {
   document.getElementById("launcher-screen").classList.toggle("hidden", id !== "launcher-screen");
   document.getElementById("terminal-screen").classList.toggle("hidden", id !== "terminal-screen");
-  if (id === "terminal-screen") setTimeout(scheduleFit, 50);
+  if (id === "terminal-screen") {
+    setTimeout(() => {
+      if (fitAddon) fitAddon.fit();
+    }, 100);
+  }
 }
 
 function initTerminal() {
@@ -38,10 +20,7 @@ function initTerminal() {
     cursorBlink: true,
     fontSize: 14,
     fontFamily: '"SF Mono", Monaco, "Cascadia Code", monospace',
-    theme: {
-      background: '#000000',
-      foreground: '#f8fafc'
-    },
+    theme: { background: '#000000', foreground: '#f8fafc' },
     allowProposedApi: true
   });
 
@@ -54,6 +33,8 @@ function initTerminal() {
       ws.send(JSON.stringify({ type: 'input', data }));
     }
   });
+
+  window.addEventListener('resize', () => fitAddon.fit());
 }
 
 async function fetchTools() {
@@ -86,6 +67,7 @@ async function fetchTools() {
 function runTool(toolId, toolName) {
   currentTool = toolId;
   document.getElementById('active-tool-name').textContent = toolName;
+  switchToScreen('terminal-screen');
   initTerminal();
   term.clear();
   
@@ -95,46 +77,37 @@ function runTool(toolId, toolName) {
   ws = new WebSocket(`${protocol}//${window.location.host}?tool=${toolId}`);
 
   ws.onmessage = (ev) => term.write(ev.data);
-  ws.onclose = () => {
-    term.write('\r\n\x1b[31mConnection closed.\x1b[0m\r\n');
+  ws.onopen = () => {
+    fitAddon.fit();
+    ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
   };
-  ws.onerror = () => {
-    term.write('\r\n\x1b[31mConnection error.\x1b[0m\r\n');
-  };
-
-  switchToScreen('terminal-screen');
 }
 
-// Event Listeners
-window.addEventListener('resize', scheduleFit);
-window.visualViewport?.addEventListener('resize', () => {
-  setAppHeightVar();
-  scheduleFit();
-});
+async function copyTerminalContent() {
+  if (!term) return;
+  term.selectAll();
+  const text = term.getSelection();
+  try {
+    await navigator.clipboard.writeText(text);
+    const btn = document.getElementById('copy-terminal');
+    const originalText = btn.querySelector('span').innerText;
+    btn.querySelector('span').innerText = 'Copied!';
+    setTimeout(() => {
+      btn.querySelector('span').innerText = originalText;
+      term.clearSelection();
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy', err);
+  }
+}
 
 document.getElementById('back-to-launcher').onclick = () => {
   if (ws) ws.close();
   switchToScreen('launcher-screen');
 };
 
-document.getElementById('clear-term').onclick = () => term?.clear();
-
-document.querySelectorAll('.kbd-btn').forEach(btn => {
-  btn.onclick = () => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const key = btn.dataset.key;
-    const map = {
-      'tab': '\t', 'esc': '\x1b', 'ctrl-c': '\x03',
-      'up': '\x1b[A', 'down': '\x1b[B'
-    };
-    ws.send(JSON.stringify({ type: 'input', data: map[key] }));
-  };
-});
-
-document.getElementById('open-help').onclick = () => document.getElementById('help-modal').classList.remove('hidden');
-document.getElementById('close-help').onclick = () => document.getElementById('help-modal').classList.add('hidden');
+document.getElementById('copy-terminal').onclick = copyTerminalContent;
 document.getElementById('refresh-tools').onclick = fetchTools;
 
-// Startup
-setAppHeightVar();
+// Initial load
 fetchTools();

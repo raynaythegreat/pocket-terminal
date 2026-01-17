@@ -6,23 +6,18 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "vitest run --globals"
+    "test": "vitest run --globals",
+    "build": "./build.sh"
   },
   "dependencies": {
     "dotenv": "^16.3.1",
     "express": "^4.21.2",
     "cookie-parser": "^1.4.6",
     "node-pty": "^1.0.0",
-    "ws": "^8.16.0"
-  },
-  "optionalDependencies": {
-    "@modelcontextprotocol/sdk": "^1.25.2",
+    "ws": "^8.16.0",
     "@anthropic-ai/claude-code": "latest",
     "@google/gemini-cli": "latest",
-    "@github/copilot": "0.0.380",
-    "@kilocode/cli": "0.19.3",
-    "@openai/codex": "latest",
-    "@vibe-kit/grok-cli": "latest"
+    "@github/copilot": "latest"
   },
   "devDependencies": {
     "vitest": "^1.6.1"

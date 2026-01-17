@@ -34,7 +34,7 @@ const sessions = new Set();
 
 // Tool definitions
 const TOOLS = [
-  { id: 'shell', name: 'Terminal', cmd: process.env.SHELL || 'bash', category: 'core', icon: 'terminal' },
+  { id: 'shell', name: 'Terminal', cmd: 'bash', category: 'core', icon: 'terminal' },
   { id: 'claude', name: 'Claude Code', cmd: 'claude', category: 'ai', icon: 'brain' },
   { id: 'gemini', name: 'Gemini CLI', cmd: 'gemini', category: 'ai', icon: 'sparkles' },
   { id: 'copilot', name: 'Copilot', cmd: 'github-copilot', category: 'ai', icon: 'github' },
@@ -85,22 +85,22 @@ wss.on('connection', (ws, req) => {
   const toolId = url.searchParams.get('tool') || 'shell';
   const tool = TOOLS.find(t => t.id === toolId) || TOOLS[0];
 
-  // Set up environment for the tool (persistent HOME)
-  const toolHome = path.join(CLI_HOME_DIR, 'tools', tool.id);
+  // Tool-specific home directory to persist config/auth
+  const toolHome = path.join(CLI_HOME_DIR, 'tools', toolId);
   if (!fs.existsSync(toolHome)) fs.mkdirSync(toolHome, { recursive: true });
 
+  // Prepare environment: Inject node_modules/.bin into PATH
+  const localBin = path.join(__dirname, 'node_modules', '.bin');
   const env = { 
     ...process.env, 
     HOME: toolHome,
-    USER_HOME: toolHome,
+    PATH: `${localBin}${path.delimiter}${process.env.PATH}`,
     TERM: 'xterm-256color',
     COLORTERM: 'truecolor'
   };
 
   const shell = tool.cmd.startsWith('./') ? path.join(__dirname, tool.cmd) : tool.cmd;
-  const args = [];
-
-  const ptyProcess = pty.spawn(shell, args, {
+  const ptyProcess = pty.spawn(shell, [], {
     name: 'xterm-color',
     cols: 80,
     rows: 24,
@@ -108,34 +108,19 @@ wss.on('connection', (ws, req) => {
     env: env
   });
 
-  ptyProcess.onData((data) => {
-    if (ws.readyState === ws.OPEN) ws.send(data);
+  ptyProcess.onData(data => {
+    if (ws.readyState === 1) ws.send(data);
   });
 
-  ptyProcess.onExit(() => {
-    if (ws.readyState === ws.OPEN) ws.close();
-  });
-
-  ws.on('message', (message) => {
+  ws.on('message', message => {
     const msg = JSON.parse(message);
-    if (msg.type === 'input') {
-      ptyProcess.write(msg.data);
-    } else if (msg.type === 'resize') {
-      ptyProcess.resize(msg.cols, msg.rows);
-    }
+    if (msg.type === 'input') ptyProcess.write(msg.data);
+    if (msg.type === 'resize') ptyProcess.resize(msg.cols, msg.rows);
   });
 
-  ws.on('close', () => {
-    ptyProcess.kill();
-  });
-
-  ws.on('error', (err) => {
-    console.error('WebSocket error:', err);
-    ptyProcess.kill();
-  });
+  ws.on('close', () => ptyProcess.kill());
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Pocket Terminal running on http://0.0.0.0:${PORT}`);
-  console.log(`Workspace: ${WORKSPACE_DIR}`);
+server.listen(PORT, () => {
+  console.log(`Pocket Terminal running on http://localhost:${PORT}`);
 });
