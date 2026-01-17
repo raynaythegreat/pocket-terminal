@@ -6,6 +6,7 @@ describe("tools API (smoke)", () => {
     process.env.PORT = "0";
     const srv = require("../server");
     expect(srv).toBeTruthy();
+    expect(typeof srv.listen).toBe("function");
   });
 
   it("repo includes opencode launcher script", () => {
