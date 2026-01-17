@@ -1,100 +1,80 @@
 const WebSocket = require("ws");
-const { createPty, formatSpawnErrorMessage } = require("./ptyManager");
-const { wsIsAuthorized } = require("../auth/middleware");
+const { spawnPty } = require("./ptyManager");
+const { requireAuthWs } = require("../auth/middleware");
 
-function attachTerminalWs({ server, config, sessionStore, toolsRegistry }) {
-  const wss = new WebSocket.Server({ noServer: true });
+function attachTerminalWebSocketServer({ wss, config, sessionStore }) {
+  wss.on("connection", (ws, req) => {
+    // Extract tool ID from URL path
+    const urlParts = req.url.split("/");
+    const toolId = urlParts[urlParts.length - 1];
 
-  server.on("upgrade", (req, socket, head) => {
-    if (!req.url || !req.url.startsWith("/ws")) return;
-    if (!wsIsAuthorized({ sessionStore, config, req })) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-      socket.destroy();
+    // Auth check (if password is set)
+    if (!requireAuthWs(ws, req, sessionStore, config)) {
       return;
     }
 
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit("connection", ws, req);
+    console.log(`New WebSocket connection for tool: ${toolId}`);
+
+    let pty = null;
+
+    try {
+      pty = spawnPty({ toolId, config });
+      console.log(`Spawned PTY for ${toolId} with PID ${pty.pid}`);
+    } catch (error) {
+      console.error(`Failed to spawn PTY for ${toolId}:`, error);
+      ws.send(JSON.stringify({ type: "error", message: "Failed to start terminal" }));
+      ws.close();
+      return;
+    }
+
+    // Forward PTY output to WebSocket
+    pty.onData((data) => {
+      ws.send(JSON.stringify({ type: "data", data }));
     });
-  });
 
-  wss.on("connection", (ws) => {
-    let ptyProcess = null;
+    // Handle PTY exit
+    pty.onExit(({ exitCode, signal }) => {
+      console.log(`PTY for ${toolId} exited with code ${exitCode}, signal ${signal}`);
+      ws.send(JSON.stringify({ type: "exit", exitCode, signal }));
+      ws.close();
+    });
 
-    ws.on("message", (msg) => {
-      let data;
+    // Handle WebSocket messages
+    ws.on("message", (message) => {
       try {
-        data = JSON.parse(msg.toString());
-      } catch {
-        return;
-      }
-
-      if (data.type === "start") {
-        const toolId = data.toolId || "shell";
-        const tool = toolsRegistry.find((t) => t.id === toolId) || toolsRegistry[0];
-
-        try {
-          ptyProcess = createPty({ config, tool });
-
-          ptyProcess.onData((chunk) => {
-            try {
-              ws.send(JSON.stringify({ type: "output", data: chunk }));
-            } catch {
-              // ignore
-            }
-          });
-
-          ptyProcess.onExit(({ exitCode, signal }) => {
-            const msgOut = `\r\n[process exited] code=${exitCode}${signal ? ` signal=${signal}` : ""}\r\n`;
-            try {
-              ws.send(JSON.stringify({ type: "output", data: msgOut }));
-            } catch {
-              // ignore
-            }
-          });
-        } catch (err) {
-          const errMsg = formatSpawnErrorMessage({ tool, err, config });
-          try {
-            ws.send(JSON.stringify({ type: "output", data: errMsg }));
-          } catch {
-            // ignore
-          }
+        const msg = JSON.parse(message);
+        
+        if (msg.type === "input" && pty) {
+          pty.write(msg.data);
+        } else if (msg.type === "resize" && pty) {
+          pty.resize(msg.cols, msg.rows);
         }
-      }
-
-      if (data.type === "input") {
-        if (ptyProcess) {
-          try {
-            ptyProcess.write(String(data.data || ""));
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      if (data.type === "resize") {
-        if (ptyProcess && data.cols && data.rows) {
-          try {
-            ptyProcess.resize(Number(data.cols), Number(data.rows));
-          } catch {
-            // ignore
-          }
-        }
+      } catch (error) {
+        console.error("Error handling WebSocket message:", error);
       }
     });
 
+    // Handle WebSocket close
     ws.on("close", () => {
-      if (ptyProcess) {
-        try {
-          ptyProcess.kill();
-        } catch {
-          // ignore
-        }
+      console.log(`WebSocket connection closed for tool: ${toolId}`);
+      if (pty) {
+        pty.kill();
       }
     });
-  });
 
-  return wss;
+    // Handle WebSocket errors
+    ws.on("error", (error) => {
+      console.error(`WebSocket error for tool ${toolId}:`, error);
+      if (pty) {
+        pty.kill();
+      }
+    });
+
+    // Send initial terminal size
+    ws.send(JSON.stringify({ type: "ready" }));
+  });
 }
 
-module.exports = { attachTerminalWs };
+module.exports = {
+  attachTerminalWebSocketServer,
+};
