@@ -17,7 +17,8 @@
     "ws": "^8.16.0",
     "@anthropic-ai/claude-code": "latest",
     "@google/gemini-cli": "latest",
-    "@github/copilot": "latest"
+    "@github/copilot": "latest",
+    "@vibe-kit/grok-cli": "^0.6.1"
   },
   "devDependencies": {
     "vitest": "^1.6.1"

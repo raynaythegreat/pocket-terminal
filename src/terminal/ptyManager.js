@@ -1,70 +1,93 @@
-const os = require("os");
+const pty = require("node-pty");
 const path = require("path");
 const fs = require("fs");
-const pty = require("node-pty");
-const { toolHomeDir, ensureDir } = require("../config/paths");
 
-/**
- * Spawn a PTY for the given tool.
- * - CWD: WORKSPACE_DIR
- * - HOME: per-tool HOME under CLI_HOME_DIR/tools/<toolId>
- * - PATH: inherits process.env.PATH
- */
-function spawnToolPty({ tool, config }) {
-  const isWin = os.platform() === "win32";
+function ensureDir(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+}
 
-  const shell = isWin ? "powershell.exe" : "bash";
-  const cmd = tool && tool.cmd ? tool.cmd : shell;
+function buildToolHome({ config, toolId }) {
+  const toolHome = path.join(config.cliHomeDir, "tools", toolId);
+  ensureDir(toolHome);
 
-  const cwd = config.workspaceDir;
+  // XDG dirs improve compatibility for CLIs that follow the standard instead of HOME-dotfiles.
+  const xdgConfig = path.join(toolHome, ".config");
+  const xdgData = path.join(toolHome, ".local", "share");
+  const xdgCache = path.join(toolHome, ".cache");
 
-  const home = toolHomeDir(config.cliHomeDir, tool.id);
-  ensureDir(home);
+  ensureDir(xdgConfig);
+  ensureDir(xdgData);
+  ensureDir(xdgCache);
 
-  // Ensure some tools expecting these dirs won't fail.
-  try {
-    ensureDir(path.join(home, ".config"));
-  } catch {
-    // ignore
-  }
+  return { toolHome, xdgConfig, xdgData, xdgCache };
+}
 
-  const env = {
-    ...process.env,
-    HOME: home,
-    // Many CLIs respect XDG paths; isolating prevents collisions.
-    XDG_CONFIG_HOME: path.join(home, ".config"),
-    XDG_DATA_HOME: path.join(home, ".local", "share"),
-    XDG_STATE_HOME: path.join(home, ".local", "state"),
-    XDG_CACHE_HOME: path.join(home, ".cache"),
-    TERM: "xterm-256color",
-  };
+function buildSpawnEnv({ config, toolId }) {
+  const env = { ...process.env };
 
-  // Make sure XDG dirs exist
-  ["XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"].forEach((k) => {
-    try {
-      if (env[k]) ensureDir(env[k]);
-    } catch {
-      // ignore
-    }
-  });
+  const { toolHome, xdgConfig, xdgData, xdgCache } = buildToolHome({ config, toolId });
 
-  // For repo-relative scripts (./opencode), ensure they run from repo root.
-  // But for general tools, run from workspace to match README expectation.
-  const resolvedCwd = cmd.startsWith("./") ? config.rootDir : cwd;
+  env.HOME = toolHome;
+  env.XDG_CONFIG_HOME = xdgConfig;
+  env.XDG_DATA_HOME = xdgData;
+  env.XDG_CACHE_HOME = xdgCache;
 
-  const ptyProcess = pty.spawn(cmd, [], {
+  // Ensure local bins are discoverable
+  const repoBin = path.join(config.rootDir, "bin");
+  const nodeBin = path.join(config.rootDir, "node_modules", ".bin");
+
+  const extraPathParts = [
+    repoBin,
+    nodeBin,
+    // Common user bin dirs (helpful if a CLI installs itself into HOME)
+    path.join(toolHome, ".local", "bin"),
+    path.join(toolHome, ".npm-global", "bin"),
+    path.join(config.cliHomeDir, ".local", "bin"),
+    path.join(config.cliHomeDir, ".npm-global", "bin"),
+  ].filter(Boolean);
+
+  const existingPath = env.PATH ? String(env.PATH) : "";
+  env.PATH = [...extraPathParts, existingPath].join(path.delimiter);
+
+  return env;
+}
+
+function createPty({ config, tool }) {
+  const cols = 120;
+  const rows = 30;
+
+  const shell = tool.command;
+  const args = Array.isArray(tool.args) ? tool.args : [];
+
+  const env = buildSpawnEnv({ config, toolId: tool.id });
+
+  const ptyProcess = pty.spawn(shell, args, {
     name: "xterm-256color",
-    cols: 80,
-    rows: 24,
-    cwd: resolvedCwd,
+    cols,
+    rows,
+    cwd: config.workspaceDir,
     env,
   });
-
-  // Best-effort: if bash isn't present on Linux container, fallback to sh for shell tool.
-  // Note: this only triggers if spawn errors synchronously, which node-pty may not always do.
-  ptyProcess.on("exit", () => {});
 
   return ptyProcess;
 }
 
-module.exports = { spawnToolPty };
+function formatSpawnErrorMessage({ tool, err, config }) {
+  const lines = [];
+  lines.push("");
+  lines.push("Pocket Terminal: failed to start tool");
+  lines.push(`Tool: ${tool.name} (${tool.id})`);
+  lines.push(`Command: ${tool.command} ${(tool.args || []).join(" ")}`.trim());
+  lines.push(`Error: ${err && err.message ? err.message : String(err)}`);
+  if (err && err.code) lines.push(`Code: ${err.code}`);
+  lines.push(`CWD: ${config.workspaceDir}`);
+  lines.push(`PATH: ${process.env.PATH || ""}`);
+  lines.push("");
+  return lines.join("\r\n");
+}
+
+module.exports = {
+  createPty,
+  buildSpawnEnv,
+  formatSpawnErrorMessage,
+};
