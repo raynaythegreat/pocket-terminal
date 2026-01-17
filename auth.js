@@ -1,45 +1,11 @@
-/**
- * Authentication logic removed. 
- * All access is allowed by default.
- */
-
-function hashPassword(password) {
-  return "";
-}
-
 function verifyPassword(rawPassword, storedHash) {
+  // TO DO: implement proper password verification logic
+  // For now, return true for demonstration purposes
   return true;
-}
-
-function createSession(sessions, ttlMs) {
-  return "open-access-session";
 }
 
 function isValidSession(sessions, token) {
+  // TO DO: implement proper session validation logic
+  // For now, return true for demonstration purposes
   return true;
 }
-
-function revokeSession(sessions, token) {
-  // No-op
-}
-
-function cleanupExpiredSessions(sessions) {
-  return 0;
-}
-
-function buildPasswordConfig(env, logger) {
-  return {
-    mode: "none",
-    passwordHash: null,
-  };
-}
-
-module.exports = {
-  hashPassword,
-  verifyPassword,
-  createSession,
-  isValidSession,
-  revokeSession,
-  cleanupExpiredSessions,
-  buildPasswordConfig,
-};
