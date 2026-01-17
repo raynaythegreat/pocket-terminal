@@ -2,8 +2,12 @@ let ws = null;
 let term = null;
 let fitAddon = null;
 let currentTool = "shell";
-let reconnectTimeout = null;
-let isConnecting = false;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY = 1000;
+let inputQueue = [];
+let resizeDebounce = null;
+let heartbeatInterval = null;
 
 function switchToScreen(id) {
   document.getElementById("launcher-screen").classList.toggle("hidden", id !== "launcher-screen");
@@ -15,12 +19,20 @@ function switchToScreen(id) {
   }
 }
 
-function requestFitSoon() {
-  if (!fitAddon) return;
-  // Defer to allow layout to settle (especially after iOS viewport changes)
-  setTimeout(() => {
-    try { fitAddon.fit(); } catch (_) {}
-  }, 50);
+function handleViewportChange() {
+  if (resizeDebounce) clearTimeout(resizeDebounce);
+  resizeDebounce = setTimeout(() => {
+    if (!fitAddon) return;
+    try {
+      fitAddon.fit();
+      if (ws?.readyState === WebSocket.OPEN) {
+        const { cols, rows } = fitAddon;
+        ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+      }
+    } catch (error) {
+      console.warn('Viewport resize error:', error);
+    }
+  }, 200);
 }
 
 function initTerminal() {
@@ -40,21 +52,29 @@ function initTerminal() {
   fitAddon = new FitAddon.FitAddon();
   term.loadAddon(fitAddon);
   term.open(document.getElementById('terminal-container'));
+  fitAddon.fit();
 
   term.onData(data => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'input', data }));
+    } else {
+      inputQueue.push(data);
     }
   });
 
-  // Handle window resize
-  window.addEventListener('resize', () => requestFitSoon());
-
-  // iOS Safari: viewport changes when address bar collapses or keyboard opens.
+  window.addEventListener('resize', handleViewportChange);
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => requestFitSoon());
-    window.visualViewport.addEventListener('scroll', () => requestFitSoon());
+    window.visualViewport.addEventListener('resize', handleViewportChange);
   }
+}
+
+function setupHeartbeat() {
+  clearInterval(heartbeatInterval);
+  heartbeatInterval = setInterval(() => {
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'heartbeat' }));
+    }
+  }, 30000);
 }
 
 function showConnectionStatus(text, showReconnect = false) {
@@ -65,21 +85,16 @@ function showConnectionStatus(text, showReconnect = false) {
   textEl.textContent = text;
   banner.classList.remove('hidden');
   reconnectBtn.classList.toggle('hidden', !showReconnect);
-}
 
-function hideConnectionStatus() {
-  const banner = document.getElementById('connection-status');
-  banner.classList.add('hidden');
+  // Make banner more accessible
+  banner.setAttribute('aria-live', 'assertive');
+  banner.setAttribute('role', 'alert');
 }
 
 function connectWebSocket(toolId) {
-  if (isConnecting) return;
-  isConnecting = true;
-  
-  // Clear any existing reconnect timeout
-  if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout);
-    reconnectTimeout = null;
+  if (ws) {
+    ws.close();
+    clearInterval(heartbeatInterval);
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -90,14 +105,18 @@ function connectWebSocket(toolId) {
   ws = new WebSocket(wsUrl);
   
   ws.onopen = () => {
-    isConnecting = false;
-    hideConnectionStatus();
-    console.log('WebSocket connected');
+    reconnectAttempts = 0;
+    showConnectionStatus('Connected', false);
+    setupHeartbeat();
     
-    // Send initial terminal size
     if (fitAddon) {
       const { cols, rows } = fitAddon;
       ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    }
+
+    // Send queued input
+    while (inputQueue.length > 0) {
+      ws.send(JSON.stringify({ type: 'input', data: inputQueue.shift() }));
     }
   };
   
@@ -107,15 +126,39 @@ function connectWebSocket(toolId) {
       if (msg.type === 'data') {
         term.write(msg.data);
       }
-    } catch (e) {
-      console.error('Failed to parse WebSocket message:', e);
+    } catch (error) {
+      console.error('WebSocket message error:', error);
     }
   };
   
-  ws.onclose = () => {
-    isConnecting = false;
-    console.log('WebSocket disconnected');
-    showConnectionStatus('Disconnected', true);
-    
-    // Auto-reconnect after 3 seconds
-    reconnectTimeout = setTimeout(() =>
+  ws.onclose = (event) => {
+    if (event.code !== 1000) {
+      const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts), 30000);
+      showConnectionStatus(`Disconnected (Reconnecting in ${delay/1000}s...)`, true);
+      
+      reconnectAttempts++;
+      if (reconnectAttempts <= MAX_RECONNECT_ATTEMPTS) {
+        setTimeout(() => connectWebSocket(toolId), delay);
+      }
+    }
+  };
+  
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+    showConnectionStatus('Connection error', true);
+  };
+}
+
+// Initialize when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  initTerminal();
+  
+  document.getElementById('reconnect-btn').addEventListener('click', () => {
+    connectWebSocket(currentTool);
+  });
+
+  document.getElementById('back-to-launcher').addEventListener('click', () => {
+    if (ws) ws.close();
+    switchToScreen('launcher-screen');
+  });
+});

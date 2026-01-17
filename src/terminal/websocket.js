@@ -1,76 +1,65 @@
-/**
- * WebSocket handling for terminal connections.
- * Manages WebSocket connections and terminal sessions.
- */
+const WebSocket = require('ws');
+const { logger } = require('../utils/logger');
 
-const WebSocket = require("ws");
-const { logger } = require("../utils/logger");
-const { createTerminalSession } = require("./session");
+function createWebSocketServer(server, ptyManager, sessionStore) {
+  const wss = new WebSocket.Server({ server, path: '/terminal/' });
 
-const sessions = new Map();
+  wss.on('connection', (ws, req) => {
+    const toolId = req.url.split('/').pop();
+    const sessionId = req.headers['cookie']?.split(';')
+      .find(c => c.trim().startsWith('sessionId='))
+      ?.split('=')[1];
 
-function initializeWebSocket(server, { config }) {
-  const wss = new WebSocket.Server({ 
-    server,
-    path: "/terminal"
-  });
+    if (!sessionStore.isValidSession(sessionId)) {
+      logger.warn(`Invalid session attempt for tool: ${toolId}`);
+      return ws.close(4001, 'Unauthorized');
+    }
 
-  wss.on("connection", (ws, req) => {
-    // Extract tool ID from URL path
-    const urlParts = req.url.split("/");
-    const toolId = urlParts[urlParts.length - 1] || "shell";
+    logger.debug(`New WebSocket connection for ${toolId}`);
+    const pty = ptyManager.createSession(toolId);
     
-    logger.info(`New WebSocket connection for tool: ${toolId}`);
-    
-    // Create terminal session
-    const session = createTerminalSession(toolId, { config });
-    sessions.set(ws, session);
-    
-    // Handle WebSocket messages
-    ws.on("message", (data) => {
+    // Heartbeat handler
+    let heartbeatTimeout;
+    function resetHeartbeat() {
+      clearTimeout(heartbeatTimeout);
+      heartbeatTimeout = setTimeout(() => {
+        logger.debug(`Heartbeat timeout for ${toolId}`);
+        ws.close(4002, 'Heartbeat timeout');
+      }, 45000); // 45s timeout (30s heartbeat + buffer)
+    }
+    resetHeartbeat();
+
+    ws.on('message', (data) => {
       try {
-        const message = JSON.parse(data);
-        session.handleMessage(message, ws);
+        const msg = JSON.parse(data);
+        
+        if (msg.type === 'heartbeat') {
+          resetHeartbeat();
+          return;
+        }
+
+        if (msg.type === 'resize') {
+          pty.resize(msg.cols, msg.rows);
+          return;
+        }
+
+        if (msg.type === 'input') {
+          pty.write(msg.data);
+        }
       } catch (error) {
-        logger.error("Failed to parse WebSocket message:", error);
-        ws.send(JSON.stringify({ 
-          type: "error", 
-          message: "Invalid message format" 
-        }));
+        logger.error('WebSocket message error:', error);
       }
     });
-    
-    // Handle WebSocket close
-    ws.on("close", () => {
-      logger.info(`WebSocket connection closed for tool: ${toolId}`);
-      const session = sessions.get(ws);
-      if (session) {
-        session.cleanup();
-        sessions.delete(ws);
+
+    pty.onData(data => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'data', data }));
       }
     });
-    
-    // Handle WebSocket errors
-    ws.on("error", (error) => {
-      logger.error("WebSocket error:", error);
+
+    ws.on('close', () => {
+      logger.debug(`WebSocket closed for ${toolId}`);
+      clearTimeout(heartbeatTimeout);
+      ptyManager.cleanupSession(toolId);
     });
-    
-    // Send initial terminal size if available
-    ws.send(JSON.stringify({ 
-      type: "ready", 
-      toolId,
-      message: "Terminal session established" 
-    }));
-  });
 
-  // Cleanup on server shutdown
-  process.on("SIGTERM", () => {
-    wss.close();
-    sessions.forEach(session => session.cleanup());
-  });
-
-  logger.info("WebSocket server initialized");
-  return wss;
-}
-
-module.exports = { initializeWebSocket };
