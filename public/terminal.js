@@ -3,12 +3,6 @@ let term = null;
 let fitAddon = null;
 let currentTool = "shell";
 let connectionStatus = "disconnected";
-let lastTool = "shell";
-let termDataDisposable = null;
-
-let pendingFitTimer = null;
-let pendingResizeTimer = null;
-let authData = { url: null, code: null };
 
 // Set app height for mobile viewport
 function setAppHeightVar() {
@@ -17,111 +11,130 @@ function setAppHeightVar() {
   document.documentElement.style.setProperty("--app-height", `${Math.floor(h)}px`);
 }
 
-// Terminal fitting with mobile keyboard support
 function scheduleFit() {
   if (!term || !fitAddon) return;
-
-  if (pendingFitTimer) clearTimeout(pendingFitTimer);
-
-  // Two-stage fitting to survive mobile keyboard + layout shifts
   requestAnimationFrame(() => {
     try {
       fitAddon.fit();
-    } catch (e) {
-      console.warn("Terminal fit error:", e);
-    }
-
-    pendingFitTimer = setTimeout(() => {
-      try {
-        fitAddon.fit();
-      } catch (e) {
-        console.warn("Terminal fit error (delayed):", e);
-      }
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
       }
-    }, 100);
+    } catch (e) {
+      console.warn("Terminal fit error:", e);
+    }
   });
 }
 
-// Screen management
 function switchToScreen(id) {
-  const launcher = document.getElementById("launcher-screen");
-  const terminalScreen = document.getElementById("terminal-screen");
-  if (!launcher || !terminalScreen) return;
-
-  launcher.classList.toggle("hidden", id !== "launcher-screen");
-  terminalScreen.classList.toggle("hidden", id !== "terminal-screen");
-
-  if (id === "terminal-screen") {
-    setTimeout(() => scheduleFit(), 50);
-  }
+  document.getElementById("launcher-screen").classList.toggle("hidden", id !== "launcher-screen");
+  document.getElementById("terminal-screen").classList.toggle("hidden", id !== "terminal-screen");
+  if (id === "terminal-screen") setTimeout(scheduleFit, 50);
 }
 
-function switchToLauncher() {
-  switchToScreen("launcher-screen");
-}
+function initTerminal() {
+  if (term) return;
+  
+  term = new Terminal({
+    cursorBlink: true,
+    fontSize: 14,
+    fontFamily: '"SF Mono", Monaco, "Cascadia Code", monospace',
+    theme: {
+      background: '#000000',
+      foreground: '#f8fafc'
+    },
+    allowProposedApi: true
+  });
 
-function switchToTerminal() {
-  switchToScreen("terminal-screen");
-}
-
-// Connection status management
-function setConnectionBanner(state, text, showRetry = false) {
-  const banner = document.getElementById("connection-status");
-  const textEl = document.getElementById("connection-text");
-  const retryBtn = document.getElementById("reconnect-btn");
-
-  if (!banner || !textEl || !retryBtn) return;
-
-  connectionStatus = state;
-  textEl.textContent = text || "";
-
-  // Update banner styling
-  banner.classList.remove("connecting", "connected");
-  if (state === "connecting") banner.classList.add("connecting");
-  if (state === "connected") banner.classList.add("connected");
-
-  const shouldShow = state !== "connected";
-  banner.classList.toggle("hidden", !shouldShow);
-  retryBtn.classList.toggle("hidden", !showRetry);
-}
-
-// WebSocket management
-function disconnectWs() {
-  if (ws) {
-    try {
-      ws.onopen = null;
-      ws.onmessage = null;
-      ws.onerror = null;
-      ws.onclose = null;
-      ws.close();
-    } catch (e) {
-      console.warn("WebSocket close error:", e);
+  fitAddon = new FitAddon.FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(document.getElementById('terminal-container'));
+  
+  term.onData(data => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', data }));
     }
+  });
+}
+
+async function fetchTools() {
+  try {
+    const res = await fetch('/api/tools');
+    const tools = await res.json();
+    const coreGrid = document.getElementById('tools-core');
+    const aiGrid = document.getElementById('tools-ai');
+    coreGrid.innerHTML = '';
+    aiGrid.innerHTML = '';
+
+    tools.forEach(tool => {
+      const card = document.createElement('div');
+      card.className = `tool-card ${tool.ready ? '' : 'disabled'}`;
+      card.innerHTML = `
+        <div class="tool-name">${tool.name}</div>
+        <div class="badge ${tool.ready ? 'badge-ok' : ''}">${tool.ready ? 'Ready' : 'Not Found'}</div>
+      `;
+      if (tool.ready) {
+        card.onclick = () => runTool(tool.id, tool.name);
+      }
+      (tool.category === 'core' ? coreGrid : aiGrid).appendChild(card);
+    });
+    document.getElementById('tools-loading').classList.add('hidden');
+  } catch (err) {
+    console.error('Failed to fetch tools', err);
   }
-  ws = null;
 }
 
-function writeSystemLine(line) {
-  if (!term) return;
-  term.writeln(`\r\n\x1b[90m${line}\x1b[0m`);
+function runTool(toolId, toolName) {
+  currentTool = toolId;
+  document.getElementById('active-tool-name').textContent = toolName;
+  initTerminal();
+  term.clear();
+  
+  if (ws) ws.close();
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${protocol}//${window.location.host}?tool=${toolId}`);
+
+  ws.onmessage = (ev) => term.write(ev.data);
+  ws.onclose = () => {
+    term.write('\r\n\x1b[31mConnection closed.\x1b[0m\r\n');
+  };
+  ws.onerror = () => {
+    term.write('\r\n\x1b[31mConnection error.\x1b[0m\r\n');
+  };
+
+  switchToScreen('terminal-screen');
 }
 
-function setTerminalHeader(meta) {
-  const nameEl = document.getElementById("terminal-tool-name");
-  const subEl = document.getElementById("terminal-tool-sub");
-  const badgeEl = document.getElementById("terminal-tool-badge");
-  if (!nameEl || !subEl || !badgeEl) return;
+// Event Listeners
+window.addEventListener('resize', scheduleFit);
+window.visualViewport?.addEventListener('resize', () => {
+  setAppHeightVar();
+  scheduleFit();
+});
 
-  nameEl.textContent = meta?.name || "Terminal";
-  subEl.textContent = meta?.sub || "";
-  badgeEl.textContent = meta?.badge || "…";
+document.getElementById('back-to-launcher').onclick = () => {
+  if (ws) ws.close();
+  switchToScreen('launcher-screen');
+};
 
-  badgeEl.classList.remove("badge-ok", "badge-warn", "badge-muted");
-  badgeEl.classList.add(meta?.badgeClass || "badge-muted");
-}
+document.getElementById('clear-term').onclick = () => term?.clear();
 
-// Clipboard utilities
-async function copyTextToClipboard(text) {
-  const
+document.querySelectorAll('.kbd-btn').forEach(btn => {
+  btn.onclick = () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const key = btn.dataset.key;
+    const map = {
+      'tab': '\t', 'esc': '\x1b', 'ctrl-c': '\x03',
+      'up': '\x1b[A', 'down': '\x1b[B'
+    };
+    ws.send(JSON.stringify({ type: 'input', data: map[key] }));
+  };
+});
+
+document.getElementById('open-help').onclick = () => document.getElementById('help-modal').classList.remove('hidden');
+document.getElementById('close-help').onclick = () => document.getElementById('help-modal').classList.add('hidden');
+document.getElementById('refresh-tools').onclick = fetchTools;
+
+// Startup
+setAppHeightVar();
+fetchTools();

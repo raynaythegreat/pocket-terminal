@@ -80,79 +80,55 @@
         <section id="auth-panel" class="panel hidden">
           <div class="panel-head">
             <h2 class="panel-title">Authentication</h2>
-            <p class="text-sm text-muted">Login or device code detected.</p>
           </div>
-          <div id="auth-content" class="auth-content"></div>
-          <div style="margin-top: 16px; display: flex; gap: 12px;">
-            <button id="copy-auth-url" class="secondary-btn btn-sm" type="button">Copy URL</button>
-            <button id="copy-auth-code" class="secondary-btn btn-sm" type="button">Copy Code</button>
-            <button id="close-auth-panel" class="secondary-btn btn-sm" type="button">Close</button>
-          </div>
-        </section>
-
-        <section id="help-panel" class="panel hidden">
-          <div class="panel-head">
-            <h2 class="panel-title">Help & Usage</h2>
-          </div>
-          <div class="text-sm" style="line-height: 1.6;">
-            <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: var(--text);">Getting Started</h3>
-            <p>Select a tool from the <strong>Quick Launch</strong> section. Tools marked as <span class="badge badge-ok">Ready</span> are installed and available.</p>
-            
-            <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: var(--text);">AI Tools Authentication</h3>
-            <ul style="margin: 8px 0; padding-left: 20px;">
-              <li><strong>Gemini CLI</strong>: Run <code>gcloud auth application-default login --no-launch-browser</code></li>
-              <li><strong>Claude Code</strong>: Set <code>ANTHROPIC_API_KEY</code> in environment</li>
-              <li><strong>Grok CLI</strong>: Run <code>grok login</code> or set <code>XAI_API_KEY</code></li>
-              <li><strong>GitHub Copilot</strong>: Run <code>gh auth login</code></li>
-            </ul>
-
-            <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: var(--text);">Terminal Tips</h3>
-            <ul style="margin: 8px 0; padding-left: 20px;">
-              <li>Use <strong>Ctrl+C</strong> to interrupt running processes</li>
-              <li>Type <strong>exit</strong> or press <strong>Back to Launcher</strong> to return</li>
-              <li>Terminal sessions persist while you stay connected</li>
-              <li>Mobile keyboards work with all shortcuts and commands</li>
-            </ul>
-
-            <h3 style="font-size: 14px; margin: 16px 0 8px 0; color: var(--text);">Workspace</h3>
-            <p>Your projects are stored in the workspace directory. Each AI tool maintains its own configuration and authentication state.</p>
-          </div>
-          <div style="margin-top: 20px;">
-            <button id="close-help-panel" class="btn" type="button">Got it</button>
-          </div>
+          <form id="auth-form" class="auth-form">
+            <input type="password" id="app-password" placeholder="Enter password" class="input-field" required />
+            <button type="submit" class="primary-btn">Login</button>
+          </form>
         </section>
       </main>
+
+      <footer class="launcher-footer">
+        <div class="footer-note">Running on <span id="env-provider">Node.js</span></div>
+      </footer>
     </div>
 
     <!-- Terminal Screen -->
-    <div id="terminal-screen" class="screen terminal-screen hidden">
-      <header class="terminal-header">
-        <div class="terminal-tool-info">
-          <div>
-            <h2 id="terminal-tool-name" class="terminal-tool-name">Terminal</h2>
-            <p id="terminal-tool-sub" class="terminal-tool-sub">Loading...</p>
-          </div>
-          <span id="terminal-tool-badge" class="badge badge-muted">…</span>
+    <div id="terminal-screen" class="screen hidden">
+      <header class="terminal-bar">
+        <div class="terminal-bar-left">
+          <button id="back-to-launcher" class="icon-btn" aria-label="Go back">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          </button>
+          <span id="active-tool-name" class="tool-name">Terminal</span>
         </div>
-        <div class="terminal-actions">
-          <button id="copy-session" class="secondary-btn btn-sm btn-icon" type="button" title="Copy Terminal Content">
-            <span>📋</span>
-          </button>
-          <button id="clear-terminal" class="secondary-btn btn-sm btn-icon" type="button" title="Clear Terminal">
-            <span>🗑️</span>
-          </button>
-          <button id="back-to-launcher" class="secondary-btn btn-sm" type="button">
-            <span>← Back</span>
-          </button>
+        <div class="terminal-bar-right">
+          <button id="clear-term" class="secondary-btn btn-sm">Clear</button>
         </div>
       </header>
-
-      <div class="terminal-container">
-        <div id="terminal"></div>
+      <div id="terminal-container"></div>
+      <div class="terminal-controls">
+        <button class="kbd-btn" data-key="tab">TAB</button>
+        <button class="kbd-btn" data-key="esc">ESC</button>
+        <button class="kbd-btn" data-key="ctrl-c">^C</button>
+        <button class="kbd-btn" data-key="up">↑</button>
+        <button class="kbd-btn" data-key="down">↓</button>
       </div>
     </div>
 
-    <!-- Scripts -->
+    <!-- Help Modal -->
+    <div id="help-modal" class="modal hidden">
+      <div class="modal-content panel">
+        <h3>Pocket Terminal Help</h3>
+        <p>This is a mobile-optimized interface for running CLI tools.</p>
+        <ul>
+          <li><strong>Persistent Storage:</strong> Tools store config in individual home directories.</li>
+          <li><strong>Workspace:</strong> All commands run in the <code>/workspace</code> folder.</li>
+        </ul>
+        <button id="close-help" class="primary-btn">Got it</button>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="/terminal.js"></script>
