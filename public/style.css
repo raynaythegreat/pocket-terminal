@@ -11,6 +11,9 @@
   --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
 
+  /* Background image (easy to swap) */
+  --app-bg-image: url("/nanobanana-1768617465567.png");
+
   /* Safe area (notches / home indicator) */
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
@@ -40,12 +43,28 @@ html, body {
 body::before {
   content: '';
   position: fixed;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background-image: url('/nanobanana-1768607778454.png');
+  inset: 0;
+  width: 100%;
+  height: 100%;
+
+  /* Full-bleed background that adapts to all aspect ratios */
+  background-image: var(--app-bg-image);
   background-size: cover;
-  background-position: center;
+  background-position: center center;
   background-repeat: no-repeat;
-  opacity: 0.4;
+
+  /*
+    Keep the background stable across mobile browsers.
+    Using a fixed pseudo-element avoids iOS Safari "background-attachment: fixed" issues.
+  */
+  transform: translateZ(0);
+
+  /* Favor smooth scaling (avoid pixelation artifacts) */
+  image-rendering: auto;
+
+  /* Slightly reduced opacity for better text contrast across devices */
+  opacity: 0.32;
+
   z-index: -1;
 }
 
@@ -119,135 +138,192 @@ body::before {
 
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.tool-groups {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.tool-group-head h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  text-transform: uppercase;
 }
 
 .tool-card {
   background: var(--bg-elevated);
-  padding: 16px;
-  border-radius: 12px;
   border: 1px solid var(--border);
-  text-align: center;
+  border-radius: 14px;
+  padding: 14px;
   cursor: pointer;
-  transition: transform 0.1s, background 0.2s;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
 }
 
-.tool-card:active { transform: scale(0.95); }
-.tool-card:hover { background: rgba(255,255,255,0.05); }
-.tool-card.disabled { opacity: 0.4; cursor: not-allowed; }
+.tool-card:focus,
+.tool-card:focus-visible {
+  outline: none;
+  border-color: rgba(99, 102, 241, 0.65);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+.tool-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.tool-card.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(0.15);
+}
+
+.tool-name {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.1);
-  margin-top: 8px;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  flex: 0 0 auto;
 }
-.badge-ok { background: var(--success); color: white; }
 
-#terminal-container { 
-  flex: 1;
-  min-height: 0; /* critical for flex children to allow proper sizing */
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
+.badge-ok {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #d1fae5;
+}
+
+.loading-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 6px 0;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: rgba(255, 255, 255, 0.65);
+  border-radius: 999px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.text-xs { font-size: 12px; }
+.text-sm { font-size: 13px; }
+.text-muted { color: var(--text-muted); }
+
+.app-mark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.22);
+}
+
+.app-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+.secondary-btn, .primary-btn, .back-btn, .icon-btn, .reconnect-btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.secondary-btn:hover,
+.primary-btn:hover,
+.back-btn:hover,
+.icon-btn:hover,
+.reconnect-btn:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.btn-sm { padding: 8px 10px; border-radius: 10px; }
+
+.primary-btn {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.launcher-main {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1 1 auto;
+}
+
+.terminal-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
-.xterm-viewport {
-  background-color: transparent !important;
-}
-
-/* Buttons */
-.action-btn,
-.secondary-btn,
-.back-btn,
-.reconnect-btn {
-  touch-action: manipulation;
-}
-
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: var(--primary);
-  color: white;
-  border: none;
-  padding: 10px 12px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
-  min-height: 40px; /* good tap target */
-  white-space: nowrap;
-}
-
-.action-btn:active { opacity: 0.85; }
-
-.secondary-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: rgba(255,255,255,0.08);
-  color: var(--text);
-  border: 1px solid var(--border);
-  padding: 10px 12px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
-  min-height: 40px;
-  white-space: nowrap;
-}
-
-.secondary-btn:active { opacity: 0.85; }
-
-.btn-sm {
-  padding: 8px 10px;
-  min-height: 36px;
-  border-radius: 10px;
-}
-
-.back-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255,255,255,0.08);
-  border: 1px solid var(--border);
-  color: white;
-  cursor: pointer;
+#terminal-container {
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 10px;
-  border-radius: 10px;
-  min-height: 40px;
-  min-width: 40px;
 }
 
-/* Focus styles for keyboard users */
-.action-btn:focus-visible,
-.secondary-btn:focus-visible,
-.back-btn:focus-visible,
-.tool-card:focus-visible,
-.reconnect-btn:focus-visible {
-  outline: 2px solid rgba(99, 102, 241, 0.9);
-  outline-offset: 2px;
+/* Connection banner */
+.connection-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(10px + var(--sat)) 12px 10px 12px;
+  z-index: 50;
+  background: rgba(10, 10, 15, 0.86);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-/* Small-screen tightening */
-@media (max-width: 420px) {
-  .panel { padding: 16px; margin: 10px; }
-  .tools-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-  .action-btn, .secondary-btn { font-size: 12px; padding: 9px 10px; }
+.connection-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-/* Prevent accidental vertical overflow due to large safe area top padding */
-@media (orientation: landscape) {
-  .top-bar, .terminal-bar {
-    padding-top: calc(10px + (var(--sat) * 0.6));
-  }
-}
+.reconnect-btn.hidden { display: none !important; }
