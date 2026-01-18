@@ -1,83 +1,92 @@
 const pty = require("node-pty");
 const path = require("path");
 const fs = require("fs");
-const { getPaths } = require("../config/paths");
+const { logger } = require("../utils/logger");
 
-/**
- * Manages Pseudo-Terminal (PTY) instances for various tools.
- */
-class PtyManager {
+class PTYManager {
   constructor(config) {
     this.config = config;
-    this.paths = getPaths(config);
+    this.sessions = new Map();
   }
 
   /**
-   * Spawns a new PTY for a specific tool.
-   * @param {string} toolId - The ID of the tool to launch
-   * @param {object} dims - {cols, rows} terminal dimensions
+   * Spawns a new PTY for a specific tool
    */
-  spawn(toolId, dims = { cols: 80, rows: 24 }) {
-    const shell = process.platform === "win32" ? "powershell.exe" : "bash";
+  spawn(sessionId, toolId, { cols = 80, rows = 24 } = {}) {
+    // Resolve shell and arguments
+    const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "bash");
     
-    // Determine command and specific environment
-    const { command, env } = this._getToolConfig(toolId);
-
-    const ptyProcess = pty.spawn(shell, ["-c", command], {
-      name: "xterm-256color",
-      cols: dims.cols || 80,
-      rows: dims.rows || 24,
-      cwd: this.paths.workspaceDir,
-      env: {
-        ...process.env,
-        ...env,
-        TERM: "xterm-256color",
-        COLORTERM: "truecolor",
-        LANG: "en_US.UTF-8",
-      },
-    });
-
-    return ptyProcess;
-  }
-
-  _getToolConfig(toolId) {
-    // Default: local shell
-    let command = "bash";
-    let toolHome = path.join(this.paths.cliHomeDir, "tools", "default");
-
-    if (toolId === "claude") {
-      command = "claude";
-      toolHome = path.join(this.paths.cliHomeDir, "tools", "claude");
-    } else if (toolId === "copilot" || toolId === "gh") {
-      command = "gh copilot suggest";
-      toolHome = path.join(this.paths.cliHomeDir, "tools", "gh");
-    } else if (toolId === "grok") {
-      command = "grok";
-      toolHome = path.join(this.paths.cliHomeDir, "tools", "grok");
-    } else if (toolId === "gemini") {
-      command = "gemini";
-      toolHome = path.join(this.paths.cliHomeDir, "tools", "gemini");
-    } else if (toolId !== "shell") {
-      // Try generic launcher if tool is recognized but not specifically mapped
-      command = toolId;
-      toolHome = path.join(this.paths.cliHomeDir, "tools", toolId);
-    }
-
-    // Ensure the tool-specific home exists for persistence
+    // Set up tool-specific environment
+    const toolHome = path.join(this.config.cliHomeDir, "tools", toolId);
     if (!fs.existsSync(toolHome)) {
       fs.mkdirSync(toolHome, { recursive: true });
     }
 
-    return {
-      command,
-      env: {
-        HOME: toolHome,
-        XDG_CONFIG_HOME: path.join(toolHome, ".config"),
-        XDG_DATA_HOME: path.join(toolHome, ".local", "share"),
-        XDG_CACHE_HOME: path.join(toolHome, ".cache"),
-      },
+    const env = {
+      ...process.env,
+      HOME: toolHome,
+      USERPROFILE: toolHome, // Windows compatibility
+      XDG_CONFIG_HOME: path.join(toolHome, ".config"),
+      XDG_DATA_HOME: path.join(toolHome, ".local/share"),
+      XDG_CACHE_HOME: path.join(toolHome, ".cache"),
+      TERM: "xterm-256color",
+      COLORTERM: "truecolor",
+      POCKET_TERMINAL: "1",
+      WORKSPACE: this.config.workspaceDir
     };
+
+    // Ensure workspace exists
+    if (!fs.existsSync(this.config.workspaceDir)) {
+      fs.mkdirSync(this.config.workspaceDir, { recursive: true });
+    }
+
+    logger.info(`Spawning PTY for tool: ${toolId} in ${this.config.workspaceDir}`);
+
+    const ptyProcess = pty.spawn(shell, [], {
+      name: "xterm-256color",
+      cols,
+      rows,
+      cwd: this.config.workspaceDir,
+      env
+    });
+
+    // If it's a specific tool, we might want to launch it immediately
+    // but usually we just provide a shell with the right environment.
+    if (toolId !== "shell") {
+      // Small delay to let shell initialize before sending command
+      setTimeout(() => {
+        if (toolId === "claude") {
+          ptyProcess.write("claude\r");
+        } else if (toolId === "gh") {
+          ptyProcess.write("gh\r");
+        } else if (toolId === "grok") {
+          ptyProcess.write("grok\r");
+        }
+      }, 500);
+    }
+
+    this.sessions.set(sessionId, ptyProcess);
+    return ptyProcess;
+  }
+
+  resize(sessionId, cols, rows) {
+    const ptyProcess = this.sessions.get(sessionId);
+    if (ptyProcess) {
+      try {
+        ptyProcess.resize(cols, rows);
+      } catch (e) {
+        logger.error(`Resize failed for session ${sessionId}:`, e);
+      }
+    }
+  }
+
+  kill(sessionId) {
+    const ptyProcess = this.sessions.get(sessionId);
+    if (ptyProcess) {
+      ptyProcess.kill();
+      this.sessions.delete(sessionId);
+    }
   }
 }
 
-module.exports = { PtyManager };
+module.exports = { PTYManager };

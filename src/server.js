@@ -1,39 +1,44 @@
+/**
+ * Main entry point for the Pocket Terminal server.
+ */
 const http = require("http");
+const config = require("./config");
 const { createApp } = require("./app/index");
-const { loadConfig } = require("./config/index");
 const { createSessionStore } = require("./auth/sessionStore");
-const { setupTerminalWebSocket } = require("./terminal/websocket");
+const { setupWebSocket } = require("./terminal/websocket");
 const { logger } = require("./utils/logger");
 
-/**
- * Main server entry point.
- */
 function createServer() {
-  const config = loadConfig();
   const sessionStore = createSessionStore();
   
   const app = createApp({ config, sessionStore });
   const server = http.createServer(app);
 
-  // Attach Terminal WebSockets
-  setupTerminalWebSocket(server, { config, sessionStore });
+  // Initialize WebSockets
+  setupWebSocket(server, { config, sessionStore });
 
-  const port = process.env.PORT || 3000;
-  
-  server.listen(port, () => {
+  const port = config.port;
+
+  server.listen(port, "0.0.0.0", () => {
     logger.info(`Pocket Terminal running at http://localhost:${port}`);
     if (config.auth.password) {
-      logger.info(`Auth enabled (Hint: ${config.auth.hint})`);
+      logger.info("Authentication: Enabled");
     } else {
-      logger.warn(`No password set. App is PUBLIC.`);
+      logger.warn("Authentication: Disabled (No APP_PASSWORD set)");
     }
   });
 
-  return { server, app, config };
+  return { server, app, sessionStore };
 }
 
+// Start the server if this file is run directly
 if (require.main === module) {
-  createServer();
+  try {
+    createServer();
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
+  }
 }
 
 module.exports = { createServer };

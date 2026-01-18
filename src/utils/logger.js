@@ -1,74 +1,56 @@
 /**
- * Centralized logging utility for Pocket Terminal.
- * Provides consistent logging across all modules.
+ * Simple logger utility with support for different log levels.
  */
-
 const config = require("../config");
 
-const levels = {
-  error: 0,
-  warn: 1,
-  info: 2,
-  debug: 3,
-};
-
-const colors = {
-  error: "\x1b[31m", // red
-  warn: "\x1b[33m",  // yellow
-  info: "\x1b[36m",  // cyan
-  debug: "\x1b[37m", // white
-  reset: "\x1b[0m",
+const LOG_LEVELS = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
 };
 
 class Logger {
   constructor(level = "info") {
-    this.level = levels[level] || levels.info;
+    this.level = LOG_LEVELS[level.toLowerCase()] ?? LOG_LEVELS.info;
   }
 
-  shouldLog(level) {
-    return levels[level] <= this.level;
-  }
-
-  formatMessage(level, message, ...args) {
+  format(level, message, ...args) {
     const timestamp = new Date().toISOString();
-    const prefix = config.logging.format === "pretty" 
-      ? `${colors[level]}[${level.toUpperCase()}]${colors.reset} ${timestamp}`
-      : JSON.stringify({
-          level,
-          timestamp,
-          message,
-          args: args.length > 0 ? args : undefined,
-        });
+    const formattedArgs = args.map(arg => 
+      arg instanceof Error ? arg.stack : JSON.stringify(arg)
+    ).join(" ");
     
-    return `${prefix} ${message}`;
+    return `[${timestamp}] ${level.toUpperCase()}: ${message} ${formattedArgs}`;
   }
 
-  error(message, ...args) {
-    if (this.shouldLog("error")) {
-      console.error(this.formatMessage("error", message, ...args));
-    }
-  }
-
-  warn(message, ...args) {
-    if (this.shouldLog("warn")) {
-      console.warn(this.formatMessage("warn", message, ...args));
+  debug(message, ...args) {
+    if (this.level <= LOG_LEVELS.debug) {
+      console.debug(this.format("debug", message, ...args));
     }
   }
 
   info(message, ...args) {
-    if (this.shouldLog("info")) {
-      console.log(this.formatMessage("info", message, ...args));
+    if (this.level <= LOG_LEVELS.info) {
+      console.info(this.format("info", message, ...args));
     }
   }
 
-  debug(message, ...args) {
-    if (this.shouldLog("debug")) {
-      console.log(this.formatMessage("debug", message, ...args));
+  warn(message, ...args) {
+    if (this.level <= LOG_LEVELS.warn) {
+      console.warn(this.format("warn", message, ...args));
+    }
+  }
+
+  error(message, ...args) {
+    if (this.level <= LOG_LEVELS.error) {
+      console.error(this.format("error", message, ...args));
     }
   }
 }
 
-// Create singleton logger instance
-const logger = new Logger(config.logging.level);
+// Ensure the logger can be created even if config.logging is temporarily undefined during circular imports
+const logLevel = (config && config.logging && config.logging.level) ? config.logging.level : "info";
+const logger = new Logger(logLevel);
 
 module.exports = { logger, Logger };
