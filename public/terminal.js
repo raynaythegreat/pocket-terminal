@@ -16,7 +16,9 @@ function initTerminal() {
     fontFamily: '"SF Mono", Monaco, "Cascadia Code", monospace',
     theme: {
       background: '#000000',
-      foreground: '#f8fafc'
+      foreground: '#f8fafc',
+      cursor: '#6366f1',
+      selectionBackground: 'rgba(99, 102, 241, 0.3)'
     },
     allowProposedApi: true
   });
@@ -31,15 +33,20 @@ function initTerminal() {
     }
   });
 
-  // Handle standard resize
+  // Standard resize listener
   window.addEventListener('resize', () => fitTerminal());
 
-  // Handle Mobile Keyboard / Viewport changes
+  // Mobile Keyboard / Visual Viewport handling
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', () => {
-      // Adjust the app height variable for CSS
-      document.documentElement.style.setProperty('--app-height', `${window.visualViewport.height}px`);
-      fitTerminal();
+      // Set height based on actual visible space (accounting for keyboard)
+      const vh = window.visualViewport.height;
+      document.documentElement.style.setProperty('--app-height', `${vh}px`);
+      
+      // Scroll to top to prevent the browser from trying to "scroll" the fixed body
+      window.scrollTo(0, 0);
+      
+      setTimeout(fitTerminal, 100);
     });
   }
 }
@@ -66,6 +73,7 @@ function fitTerminal() {
 function connectWebSocket(toolId) {
   if (isConnecting) return;
   isConnecting = true;
+  currentTool = toolId;
   
   if (ws) {
     ws.close();
@@ -82,7 +90,7 @@ function connectWebSocket(toolId) {
     isConnecting = false;
     hideStatus();
     term.reset();
-    term.write(`\x1b[1;32mConnected to ${toolId}\x1b[0m\r\n`);
+    term.write(`\x1b[1;34m[Pocket Terminal]\x1b[0m Launching \x1b[1;37m${toolId}\x1b[0m...\r\n`);
     fitTerminal();
   };
   
@@ -93,7 +101,7 @@ function connectWebSocket(toolId) {
         term.write(msg.data);
       }
     } catch (e) {
-      // Handle raw data if not JSON (fallback)
+      // Fallback for raw data
       term.write(event.data);
     }
   };
@@ -113,70 +121,89 @@ function showStatus(text, allowRetry = false) {
   const banner = document.getElementById('connection-status');
   const textEl = document.getElementById('connection-text');
   const btn = document.getElementById('reconnect-btn');
+  if (!banner || !textEl || !btn) return;
+  
   textEl.textContent = text;
   banner.classList.remove('hidden');
   btn.classList.toggle('hidden', !allowRetry);
 }
 
 function hideStatus() {
-  document.getElementById('connection-status').classList.add('hidden');
+  const banner = document.getElementById('connection-status');
+  if (banner) banner.classList.add('hidden');
 }
 
-function switchToScreen(id) {
-  document.getElementById("launcher-screen").classList.toggle("hidden", id !== "launcher-screen");
-  document.getElementById("terminal-screen").classList.toggle("hidden", id !== "terminal-screen");
-  if (id === "terminal-screen") {
-    setTimeout(fitTerminal, 100);
+/**
+ * UI Navigation
+ */
+function switchScreen(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  document.getElementById(screenId).classList.remove('hidden');
+  
+  if (screenId === 'terminal-screen') {
+    initTerminal();
+    setTimeout(fitTerminal, 200);
   }
 }
 
-// Global Launch Function
-window.launchTool = (toolId) => {
-  currentTool = toolId;
-  document.getElementById('terminal-title').textContent = toolId;
-  initTerminal();
-  switchToScreen('terminal-screen');
-  connectWebSocket(toolId);
-};
-
-// Event Listeners
-document.getElementById('back-to-launcher').addEventListener('click', () => {
-  if (ws) ws.close();
-  switchToScreen('launcher-screen');
-});
-
-document.getElementById('reconnect-btn').addEventListener('click', () => {
-  connectWebSocket(currentTool);
-});
-
-// Initial Tool Loading
+// Initialize Launcher
 async function loadTools() {
+  const loading = document.getElementById('tools-loading');
+  const coreGrid = document.getElementById('tools-core');
+  const aiGrid = document.getElementById('tools-ai');
+  
   try {
     const res = await fetch('/api/tools');
     const tools = await res.json();
-    const container = document.getElementById('tools-ai');
-    const coreContainer = document.getElementById('tools-core');
     
-    document.getElementById('tools-loading').classList.add('hidden');
-    
-    // Core Terminal
-    coreContainer.innerHTML = `
-      <div class="tool-card" onclick="launchTool('shell')">
-        <span class="tool-name">Standard Terminal</span>
-        <span class="badge badge-ok">Ready</span>
-      </div>
-    `;
+    loading.classList.add('hidden');
+    coreGrid.innerHTML = '';
+    aiGrid.innerHTML = '';
 
-    // AI Tools
-    container.innerHTML = tools.map(t => `
-      <div class="tool-card" onclick="launchTool('${t.id}')">
-        <span class="tool-name">${t.name}</span>
-        <span class="badge ${t.isAvailable ? 'badge-ok' : ''}">${t.isAvailable ? 'Ready' : 'Not Found'}</span>
-      </div>
-    `).join('');
+    tools.forEach(tool => {
+      const card = document.createElement('div');
+      card.className = 'tool-card';
+      const statusBadge = tool.isAvailable 
+        ? '<span class="badge badge-ok">Ready</span>' 
+        : `<span class="badge">Install: ${tool.binary}</span>`;
+      
+      card.innerHTML = `
+        <span class="tool-name">${tool.name}</span>
+        ${statusBadge}
+      `;
+      
+      card.onclick = () => {
+        document.getElementById('active-tool-name').textContent = tool.name;
+        switchScreen('terminal-screen');
+        connectWebSocket(tool.id);
+      };
+
+      if (tool.id === 'shell' || tool.id === 'terminal') {
+        coreGrid.appendChild(card);
+      } else {
+        aiGrid.appendChild(card);
+      }
+    });
   } catch (err) {
-    console.error('Failed to load tools', err);
+    console.error('Failed to load tools:', err);
   }
 }
 
-window.addEventListener('DOMContentLoaded', loadTools);
+// Event Listeners
+document.getElementById('back-to-launcher').onclick = () => {
+  if (ws) ws.close();
+  switchScreen('launcher-screen');
+};
+
+document.getElementById('reconnect-btn').onclick = () => {
+  connectWebSocket(currentTool);
+};
+
+document.getElementById('refresh-tools').onclick = () => loadTools();
+
+document.getElementById('terminal-clear').onclick = () => {
+  if (term) term.reset();
+};
+
+// Initial Load
+loadTools();

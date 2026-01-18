@@ -12,6 +12,8 @@
     <meta name="theme-color" content="#0a0a0f" />
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
   </head>
   <body>
     <!-- Connection Status Banner -->
@@ -37,9 +39,6 @@
         <div class="top-bar-right">
           <button id="refresh-tools" class="secondary-btn btn-sm" type="button">
             <span>Refresh</span>
-          </button>
-          <button id="open-help" class="secondary-btn btn-sm" type="button">
-            <span>Help</span>
           </button>
         </div>
       </header>
@@ -77,27 +76,17 @@
     <div id="terminal-screen" class="screen hidden">
       <header class="terminal-bar">
         <button id="back-to-launcher" class="back-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          <span>Launcher</span>
         </button>
-        <div class="terminal-info">
-          <span id="active-tool-name" class="active-tool">Terminal</span>
-          <span class="status-dot"></span>
-        </div>
-        <div class="terminal-actions">
-          <button id="copy-terminal" class="action-btn" title="Copy Terminal Output">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-            </svg>
-            <span>Copy</span>
-          </button>
-        </div>
+        <div id="active-tool-name" class="active-tool-label">Terminal</div>
+        <button id="terminal-clear" class="secondary-btn btn-sm">Clear</button>
       </header>
       <div id="terminal-container"></div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="/terminal.js"></script>
   </body>
 </html>

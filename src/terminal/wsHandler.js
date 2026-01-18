@@ -1,29 +1,42 @@
 const { logger } = require("../utils/logger");
+const { getSession } = require("./manager");
 
 /**
- * Handles the logic for a single WebSocket terminal session.
+ * Handles terminal WebSocket connections.
+ * This is called from the WebSocket server when a new connection is established.
  */
-function handleTerminalSession(ws, ptyProcess) {
-  logger.info(`Terminal session started (PID: ${ptyProcess.pid})`);
+function handleTerminalWS(ws, toolId, req) {
+  logger.info(`Terminal WS connection: ${toolId}`);
 
-  // Stream PTY output to WebSocket
-  ptyProcess.onData((data) => {
+  // Create or get existing PTY session for this tool
+  const session = getSession(toolId);
+
+  // Send initial data if any (though usually empty for new sessions)
+  if (session.outputBuffer) {
+    ws.send(JSON.stringify({ type: 'data', data: session.outputBuffer }));
+  }
+
+  // Handle data from PTY to WebSocket
+  const onData = (data) => {
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify({ type: 'data', data }));
     }
-  });
+  };
 
-  // Handle incoming WebSocket messages
+  // Add listener and keep track of it to remove on close
+  session.pty.onData(onData);
+
+  // Handle messages from client
   ws.on('message', (message) => {
     try {
       const msg = JSON.parse(message);
-
+      
       if (msg.type === 'input') {
-        ptyProcess.write(msg.data);
+        session.pty.write(msg.data);
       } else if (msg.type === 'resize') {
         const { cols, rows } = msg;
         if (cols && rows) {
-          ptyProcess.resize(cols, rows);
+          session.pty.resize(cols, rows);
         }
       }
     } catch (err) {
@@ -31,30 +44,17 @@ function handleTerminalSession(ws, ptyProcess) {
     }
   });
 
-  // Clean up on close
+  // Cleanup on close
   ws.on('close', () => {
-    logger.info(`Terminal session closed (PID: ${ptyProcess.pid})`);
-    try {
-      // Wait a moment before killing to allow cleanup
-      setTimeout(() => {
-        ptyProcess.kill();
-      }, 1000);
-    } catch (e) {
-      // Already dead
-    }
+    logger.info(`Terminal WS closed: ${toolId}`);
+    // We don't necessarily kill the PTY immediately to allow reattachment
+    // but we must remove the data listener to prevent memory leaks/duplicate sends
+    session.pty.removeListener('data', onData);
   });
 
-  ptyProcess.onExit(({ exitCode, signal }) => {
-    logger.info(`PTY Process exited with code ${exitCode}`);
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ 
-        type: 'data', 
-        data: `\r\n\x1b[1;31mProcess exited (code: ${exitCode})\x1b[0m\r\n` 
-      }));
-      // Close the socket shortly after process ends
-      setTimeout(() => ws.close(), 2000);
-    }
+  ws.on('error', (err) => {
+    logger.error(`WS Error (${toolId}):`, err);
   });
 }
 
-module.exports = { handleTerminalSession };
+module.exports = { handleTerminalWS };
