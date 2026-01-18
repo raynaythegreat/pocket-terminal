@@ -2,27 +2,11 @@ let ws = null;
 let term = null;
 let fitAddon = null;
 let currentTool = "shell";
-let reconnectTimeout = null;
 let isConnecting = false;
 
-function switchToScreen(id) {
-  document.getElementById("launcher-screen").classList.toggle("hidden", id !== "launcher-screen");
-  document.getElementById("terminal-screen").classList.toggle("hidden", id !== "terminal-screen");
-  if (id === "terminal-screen") {
-    setTimeout(() => {
-      if (fitAddon) fitAddon.fit();
-    }, 100);
-  }
-}
-
-function requestFitSoon() {
-  if (!fitAddon) return;
-  // Defer to allow layout to settle (especially after iOS viewport changes)
-  setTimeout(() => {
-    try { fitAddon.fit(); } catch (_) {}
-  }, 50);
-}
-
+/**
+ * Initializes the xterm.js instance
+ */
 function initTerminal() {
   if (term) return;
 
@@ -31,7 +15,7 @@ function initTerminal() {
     fontSize: 14,
     fontFamily: '"SF Mono", Monaco, "Cascadia Code", monospace',
     theme: {
-      background: 'transparent',
+      background: '#000000',
       foreground: '#f8fafc'
     },
     allowProposedApi: true
@@ -47,58 +31,59 @@ function initTerminal() {
     }
   });
 
-  // Handle window resize
-  window.addEventListener('resize', () => requestFitSoon());
+  // Handle standard resize
+  window.addEventListener('resize', () => fitTerminal());
 
-  // iOS Safari: viewport changes when address bar collapses or keyboard opens.
+  // Handle Mobile Keyboard / Viewport changes
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => requestFitSoon());
-    window.visualViewport.addEventListener('scroll', () => requestFitSoon());
+    window.visualViewport.addEventListener('resize', () => {
+      // Adjust the app height variable for CSS
+      document.documentElement.style.setProperty('--app-height', `${window.visualViewport.height}px`);
+      fitTerminal();
+    });
   }
 }
 
-function showConnectionStatus(text, showReconnect = false) {
-  const banner = document.getElementById('connection-status');
-  const textEl = document.getElementById('connection-text');
-  const reconnectBtn = document.getElementById('reconnect-btn');
-  
-  textEl.textContent = text;
-  banner.classList.remove('hidden');
-  reconnectBtn.classList.toggle('hidden', !showReconnect);
+/**
+ * Fits the terminal to its container and notifies the backend
+ */
+function fitTerminal() {
+  if (!fitAddon || !term) return;
+  try {
+    fitAddon.fit();
+    const { cols, rows } = term;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'resize', cols, rows }));
+    }
+  } catch (e) {
+    console.error('Fit error:', e);
+  }
 }
 
-function hideConnectionStatus() {
-  const banner = document.getElementById('connection-status');
-  banner.classList.add('hidden');
-}
-
+/**
+ * Connects to the backend WebSocket for a specific tool
+ */
 function connectWebSocket(toolId) {
   if (isConnecting) return;
   isConnecting = true;
   
-  // Clear any existing reconnect timeout
-  if (reconnectTimeout) {
-    clearTimeout(reconnectTimeout);
-    reconnectTimeout = null;
+  if (ws) {
+    ws.close();
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const wsUrl = `${protocol}//${window.location.host}/terminal/${toolId}`;
   
-  showConnectionStatus('Connecting...');
+  showStatus('Connecting...');
   
   ws = new WebSocket(wsUrl);
   
   ws.onopen = () => {
     isConnecting = false;
-    hideConnectionStatus();
-    console.log('WebSocket connected');
-    
-    // Send initial terminal size
-    if (fitAddon) {
-      const { cols, rows } = fitAddon;
-      ws.send(JSON.stringify({ type: 'resize', cols, rows }));
-    }
+    hideStatus();
+    term.reset();
+    term.write(`\x1b[1;32mConnected to ${toolId}\x1b[0m\r\n`);
+    fitTerminal();
   };
   
   ws.onmessage = (event) => {
@@ -108,14 +93,90 @@ function connectWebSocket(toolId) {
         term.write(msg.data);
       }
     } catch (e) {
-      console.error('Failed to parse WebSocket message:', e);
+      // Handle raw data if not JSON (fallback)
+      term.write(event.data);
     }
   };
   
   ws.onclose = () => {
     isConnecting = false;
-    console.log('WebSocket disconnected');
-    showConnectionStatus('Disconnected', true);
+    showStatus('Disconnected. Tap to reconnect', true);
+  };
+
+  ws.onerror = () => {
+    isConnecting = false;
+    showStatus('Connection Error', true);
+  };
+}
+
+function showStatus(text, allowRetry = false) {
+  const banner = document.getElementById('connection-status');
+  const textEl = document.getElementById('connection-text');
+  const btn = document.getElementById('reconnect-btn');
+  textEl.textContent = text;
+  banner.classList.remove('hidden');
+  btn.classList.toggle('hidden', !allowRetry);
+}
+
+function hideStatus() {
+  document.getElementById('connection-status').classList.add('hidden');
+}
+
+function switchToScreen(id) {
+  document.getElementById("launcher-screen").classList.toggle("hidden", id !== "launcher-screen");
+  document.getElementById("terminal-screen").classList.toggle("hidden", id !== "terminal-screen");
+  if (id === "terminal-screen") {
+    setTimeout(fitTerminal, 100);
+  }
+}
+
+// Global Launch Function
+window.launchTool = (toolId) => {
+  currentTool = toolId;
+  document.getElementById('terminal-title').textContent = toolId;
+  initTerminal();
+  switchToScreen('terminal-screen');
+  connectWebSocket(toolId);
+};
+
+// Event Listeners
+document.getElementById('back-to-launcher').addEventListener('click', () => {
+  if (ws) ws.close();
+  switchToScreen('launcher-screen');
+});
+
+document.getElementById('reconnect-btn').addEventListener('click', () => {
+  connectWebSocket(currentTool);
+});
+
+// Initial Tool Loading
+async function loadTools() {
+  try {
+    const res = await fetch('/api/tools');
+    const tools = await res.json();
+    const container = document.getElementById('tools-ai');
+    const coreContainer = document.getElementById('tools-core');
     
-    // Auto-reconnect after 3 seconds
-    reconnectTimeout = setTimeout(() =>
+    document.getElementById('tools-loading').classList.add('hidden');
+    
+    // Core Terminal
+    coreContainer.innerHTML = `
+      <div class="tool-card" onclick="launchTool('shell')">
+        <span class="tool-name">Standard Terminal</span>
+        <span class="badge badge-ok">Ready</span>
+      </div>
+    `;
+
+    // AI Tools
+    container.innerHTML = tools.map(t => `
+      <div class="tool-card" onclick="launchTool('${t.id}')">
+        <span class="tool-name">${t.name}</span>
+        <span class="badge ${t.isAvailable ? 'badge-ok' : ''}">${t.isAvailable ? 'Ready' : 'Not Found'}</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    console.error('Failed to load tools', err);
+  }
+}
+
+window.addEventListener('DOMContentLoaded', loadTools);

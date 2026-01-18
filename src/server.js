@@ -1,66 +1,39 @@
-/**
- * Main server entry point for Pocket Terminal.
- * This is the single entry point that initializes and starts the application.
- */
-
-const dotenv = require("dotenv");
-dotenv.config();
-
-const { createConfig } = require("./config");
-const { createApp } = require("./app");
+const http = require("http");
+const { createApp } = require("./app/index");
+const { loadConfig } = require("./config/index");
+const { createSessionStore } = require("./auth/sessionStore");
+const { setupTerminalWebSocket } = require("./terminal/websocket");
 const { logger } = require("./utils/logger");
 
+/**
+ * Main server entry point.
+ */
 function createServer() {
-  try {
-    // Load configuration
-    const config = createConfig();
-    logger.info("Configuration loaded successfully");
-    
-    // Create Express app
-    const app = createApp({ config });
-    logger.info("Express app created");
-    
-    // Create HTTP server
-    const server = require("http").createServer(app);
-    
-    // Initialize WebSocket handlers
-    const { initializeWebSocket } = require("./terminal/websocket");
-    initializeWebSocket(server, { config });
-    logger.info("WebSocket handlers initialized");
-    
-    return { server, config };
-  } catch (error) {
-    logger.error("Failed to create server:", error);
-    throw error;
-  }
+  const config = loadConfig();
+  const sessionStore = createSessionStore();
+  
+  const app = createApp({ config, sessionStore });
+  const server = http.createServer(app);
+
+  // Attach Terminal WebSockets
+  setupTerminalWebSocket(server, { config, sessionStore });
+
+  const port = process.env.PORT || 3000;
+  
+  server.listen(port, () => {
+    logger.info(`Pocket Terminal running at http://localhost:${port}`);
+    if (config.auth.password) {
+      logger.info(`Auth enabled (Hint: ${config.auth.hint})`);
+    } else {
+      logger.warn(`No password set. App is PUBLIC.`);
+    }
+  });
+
+  return { server, app, config };
 }
 
-// Start server if run directly
 if (require.main === module) {
-  const { server, config } = createServer();
-  
-  server.listen(config.port, () => {
-    logger.info(`Pocket Terminal listening on port ${config.port}`);
-    logger.info(`Environment: ${config.nodeEnv}`);
-    logger.info(`Workspace: ${config.workspaceDir}`);
-  });
-  
-  // Graceful shutdown
-  process.on("SIGTERM", () => {
-    logger.info("Received SIGTERM, shutting down gracefully");
-    server.close(() => {
-      logger.info("Server closed");
-      process.exit(0);
-    });
-  });
-  
-  process.on("SIGINT", () => {
-    logger.info("Received SIGINT, shutting down gracefully");
-    server.close(() => {
-      logger.info("Server closed");
-      process.exit(0);
-    });
-  });
+  createServer();
 }
 
 module.exports = { createServer };

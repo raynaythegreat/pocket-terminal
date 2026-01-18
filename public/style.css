@@ -10,61 +10,32 @@
   --success: #10b981;
   --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
-
-  /* Background image (easy to swap) */
-  --app-bg-image: url("/background.png");
-
-  /* Safe area (notches / home indicator) */
+  --app-height: 100dvh;
   --sat: env(safe-area-inset-top, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
-
-  /* Dynamic viewport height (fixes iOS Safari address bar / keyboard better than 100vh) */
-  --app-height: 100dvh;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 html, body {
-  margin: 0; padding: 0; width: 100%;
-  height: 100%;
+  margin: 0; padding: 0; width: 100%; height: 100%;
   background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-main);
   overflow: hidden;
-}
-
-/* Fallback for browsers without dvh */
-@supports not (height: 100dvh) {
-  :root { --app-height: 100vh; }
+  position: fixed; /* Prevent elastic scrolling on iOS */
 }
 
 body::before {
   content: '';
   position: fixed;
   inset: 0;
-  width: 100%;
-  height: 100%;
-
-  /* Full-bleed background that adapts to all aspect ratios */
-  background-image: var(--app-bg-image);
+  background-image: url("/background.png");
   background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
-
-  /*
-    Keep the background stable across mobile browsers.
-    Using a fixed pseudo-element avoids iOS Safari "background-attachment: fixed" issues.
-  */
-  transform: translateZ(0);
-
-  /* Favor smooth scaling (avoid pixelation artifacts) */
-  image-rendering: auto;
-
-  /* Slightly reduced opacity for better text contrast across devices */
-  opacity: 0.32;
-
+  background-position: center;
+  opacity: 0.15;
   z-index: -1;
 }
 
@@ -72,237 +43,98 @@ body::before {
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: var(--app-height);
   height: var(--app-height);
-  position: relative;
-  z-index: 1;
-
-  /* Prevent content from being clipped by notches/home indicator */
-  padding-left: var(--sal);
-  padding-right: var(--sar);
+  padding-top: var(--sat);
   padding-bottom: var(--sab);
 }
 
 .hidden { display: none !important; }
 
+/* Terminal Screen Layout */
+#terminal-screen {
+  background: black;
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: #1a1a24;
+  border-bottom: 1px solid var(--border);
+  height: 50px;
+  flex-shrink: 0;
+}
+
+#terminal-container {
+  flex: 1;
+  width: 100%;
+  background: black;
+  overflow: hidden;
+  padding: 4px;
+}
+
+/* Ensure xterm handles take up full space */
+.xterm {
+  padding: 8px;
+  height: 100%;
+}
+
+.xterm-viewport {
+  background-color: black !important;
+}
+
+/* Buttons and UI */
+.back-btn {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
 .panel {
   background: var(--bg-card);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 20px;
-  margin: 12px;
+  border-radius: 12px;
+  margin: 16px;
+  padding: 16px;
 }
 
-.top-bar, .terminal-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-
-  /* Allow wrapping so buttons don't get clipped on narrow viewports */
-  flex-wrap: wrap;
-  gap: 10px;
-
-  padding: calc(12px + var(--sat)) 16px 12px 16px;
-  background: var(--bg-card);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid var(--border);
-
-  /* Make sure bars stay visible and do not cause overflow issues */
-  flex: 0 0 auto;
-}
-
-.top-bar-left, .top-bar-right,
-.terminal-bar-left, .terminal-bar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Typography helpers */
-.text-xs { font-size: 12px; }
-.text-sm { font-size: 14px; }
-.text-muted { color: var(--text-muted); }
-
-/* App mark */
-.app-mark {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.app-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #a5b4fc, var(--primary));
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
-}
-.app-title {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.1;
-}
-
-/* Buttons */
-button {
-  font: inherit;
-  color: inherit;
-}
-.secondary-btn,
-.primary-btn,
-.back-btn,
-.icon-btn,
-.reconnect-btn {
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 10px 12px;
-  cursor: pointer;
-}
-.secondary-btn:hover,
-.primary-btn:hover,
-.back-btn:hover,
-.icon-btn:hover,
-.reconnect-btn:hover {
-  background: rgba(255, 255, 255, 0.10);
-}
-.primary-btn {
-  background: rgba(99, 102, 241, 0.22);
-  border-color: rgba(99, 102, 241, 0.35);
-}
-.btn-sm { padding: 8px 10px; border-radius: 10px; }
-
-/* Launcher layout */
-.launcher-main {
-  flex: 1 1 auto;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-.panel-title {
-  margin: 0;
-  font-size: 16px;
-}
-.tool-groups {
-  display: grid;
-  gap: 16px;
-}
-.tool-group-head h3 {
-  margin: 0 0 10px 0;
-  font-size: 14px;
-  letter-spacing: 0.02em;
-  color: rgba(248, 250, 252, 0.92);
-}
 .tools-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 12px;
-}
-@media (min-width: 720px) {
-  .tools-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  margin-top: 12px;
 }
 
-/* Tool cards */
 .tool-card {
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.20);
-  border-radius: 14px;
+  border-radius: 10px;
   padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 96px;
-}
-.tool-card button {
-  width: 100%;
-}
-.tool-name {
-  font-weight: 600;
-  margin: 0;
-}
-.tool-desc {
-  margin: 0;
-  font-size: 13px;
-  color: rgba(203, 213, 225, 0.92);
-}
-.badge-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.badge {
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.06);
-}
-.badge-ok {
-  border-color: rgba(16, 185, 129, 0.35);
-  background: rgba(16, 185, 129, 0.14);
-  color: #a7f3d0;
-}
-.badge-warn {
-  border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.14);
-  color: #fde68a;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.1s;
 }
 
-/* Loading */
-.loading-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin: 8px 0 14px 0;
-}
-.spinner {
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  border: 2px solid rgba(255,255,255,0.18);
-  border-top-color: rgba(255,255,255,0.65);
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+.tool-card:active { transform: scale(0.97); }
 
-/* Connection banner */
+.tool-name { font-weight: 600; display: block; margin-bottom: 4px; }
+.badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #333; }
+.badge-ok { background: var(--success); color: white; }
+
 .connection-banner {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: calc(10px + var(--sat)) 12px 10px 12px;
-  background: rgba(0,0,0,0.65);
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(12px);
-  z-index: 20;
-}
-.connection-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Terminal screen */
-#terminal-screen {
-  background: transparent;
-}
-.terminal-main {
-  flex: 1 1 auto;
-  overflow: hidden;
-}
-#terminal-container {
-  height: 100%;
-  width: 100%;
-  padding: 12px;
+  top: 0; left: 0; right: 0;
+  background: #ef4444;
+  color: white;
+  padding: 8px;
+  text-align: center;
+  z-index: 1000;
+  font-size: 13px;
 }
